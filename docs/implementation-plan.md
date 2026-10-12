@@ -15,7 +15,7 @@
 
 - Interactive setup with hidden credential input and generated helper credentials.
 - Inspected-checkout Linux installer, separate service account, and hardened systemd unit. Installer shell syntax is checked; privileged installation is not run on the developer machine.
-- Pinned-action CI on Linux for Python 3.12/3.13; remote checks are reported separately from local results.
+- Pinned-action CI passed on Linux with Python 3.12 and 3.13, including tests, formatting, the installed mock command, and installer shell syntax.
 
 Additional verification: the built wheel was installed into a separate Python 3.13 environment and its mock command passed; local Ruff checks and installer shell syntax passed. A pip-audit check of the locked runtime requirements reported no known vulnerabilities in the local environment.
 

@@ -24,7 +24,14 @@ The secure installer requires **Linux with systemd, system Python 3.12+, a syste
 
 1. Create a Discord application and bot. Leave privileged intents disabled. Invite it with **View Channels, Send Messages, Read Message History**; restrict its visibility to your private text channel. Copy the server, channel, and your own user IDs using Discord Developer Mode.
 2. Create a Grok webhook routine on this machine. Save the instructions from [prompts/grok-routine.md](prompts/grok-routine.md). Obtain its webhook URL and key. The currently supported URL is `https://api2.cursor.sh/automations/webhook/<id>`.
-3. Clone this private repository onto that machine and inspect the installer. From the checkout, run:
+3. Clone this private repository onto that machine and inspect the installer. While the implementation pull request is still a draft, select its branch:
+
+   ```bash
+   git clone --branch feat/local-bridge https://github.com/diandian2710/discord-grok-bridge.git
+   cd discord-grok-bridge
+   ```
+
+   The private clone requires your existing GitHub access. From the inspected checkout, run:
 
    ```bash
    sudo ./deploy/install.sh <grok-user>
