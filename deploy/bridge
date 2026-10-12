@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Run as Grok's unprivileged OS user. No Docker access or third-party Python packages needed.
+set -euo pipefail
+bridge_root=$(cd "$(dirname "$0")/.." && pwd)
+export PYTHONPATH="$bridge_root/src"
+exec python3 -m discord_grok_bridge.helper "$@"

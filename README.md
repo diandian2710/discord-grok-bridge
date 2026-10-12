@@ -2,7 +2,7 @@
 
 A private Discord ↔ Grok Bot bridge that runs on **the same computer as Grok Bot**. One Discord bot, one server, one text channel, and one authorized human.
 
-**Status:** runnable first implementation, verified with 84 offline tests and a mocked end-to-end round-trip. Live Discord/Grok compatibility and the Linux service installation still require verification on your Grok machine. No real credentials have been configured in this repository.
+**Status:** runnable first implementation, verified with 92 offline tests and a mocked end-to-end round-trip. Docker execution is verified with mock transports; live Discord/Grok compatibility and the optional Linux system service still require verification on your Grok machine. No real credentials have been configured in this repository.
 
 ## How it works
 
@@ -18,13 +18,54 @@ Messages are stored before “Queued.” is posted. Grok uses a terminal helper 
 
 Requests run one at a time in the channel. The queue and per-chunk delivery records survive restarts. Repeated submissions of the same answer are idempotent. Six completed exchanges are supplied as bounded context; native Grok chat history is not synchronized.
 
-## Setup on Grok's Linux machine
+## Docker setup (recommended)
+
+Run Docker on the same machine as Grok. Requirements: **Docker Engine 28+, Docker Compose, Python 3.12+ for the small host helper, and a separate unprivileged Grok OS user**. The human operator uses Docker; Grok must not have Docker daemon access, root, or sudo. No host uv installation or Python package installation is needed for this path.
+
+Create the Discord bot and Grok webhook routine as described below. Obtain the bot token, guild/channel/owner IDs, and Grok webhook URL/key. Then, from an inspected checkout of `feat/local-bridge`, run as the human operator:
+
+```bash
+./deploy/docker-setup.sh <grok-user>
+docker compose up -d bridge
+```
+
+The wizard builds the pinned image, accepts secret input locally with hidden prompts, and writes service credentials into the Docker-managed `state` volume. It writes only the scoped helper profile to Grok's own `~/.config/discord-grok-bridge/agent.json`. The one-off setup container has no network access and refuses to overwrite existing configurations. If Grok's profile folder needs creation, the operator script uses `sudo -u <grok-user>` for that step.
+
+Place the checkout where Grok can read it. In the routine, use the absolute path to `deploy/bridge` as its helper executable, for example:
+
+```bash
+/path/to/discord-grok-bridge/deploy/bridge claim
+/path/to/discord-grok-bridge/deploy/bridge reply --job /path/from/claim.json < /path/to/reply.txt
+/path/to/discord-grok-bridge/deploy/bridge doctor
+```
+
+This helper uses Python's standard library and never invokes Docker. It shares the same claim/reply implementation as the installed `bridge` command. See [the routine prompt](prompts/grok-routine.md) and substitute the executable path throughout.
+
+The runtime container runs as UID 10001, with a read-only root filesystem, dropped capabilities, no new privileges, bounded resources/logs, a healthcheck, and process restart unless stopped. Its authenticated API is published as **`127.0.0.1:18792` on the host**. Listening on all interfaces *inside* the container is enabled only by the explicit Docker mode; native deployments keep loopback binding. Service credentials are not stored in environment variables, the image, the source checkout, or the helper profile. Other containers on the same Docker network can reach the API but still need credentials; keep unrelated containers off this network.
+
+Docker Engine 28+ is required because older engines have a documented exception to localhost-only published-port isolation. Keep the daemon's normal bridge/NAT networking; do not enable direct routing, host networking, or a remote daemon for this local-helper setup. [Docker port publishing](https://docs.docker.com/engine/network/port-publishing/)
+
+Operations:
+
+```bash
+docker compose ps
+docker compose logs --tail 100 bridge
+docker compose exec bridge bridge status --config /state/service.json
+docker compose restart bridge
+docker compose down
+```
+
+`down` preserves the queue and credentials. **Do not use `down -v`** unless you intend to delete that state. Stop an existing native bridge before starting Docker to avoid two listeners or a port conflict. A health failure marks the container unhealthy; `unless-stopped` restarts an exited process, not every unhealthy container.
+
+After configuration, send one new Discord mention and observe the real final reply. That live round-trip is still required; the offline container test uses fake Discord/Grok transports.
+
+## Native setup on Grok's Linux machine (optional)
 
 The secure installer requires **Linux with systemd, system Python 3.12+, a system-wide uv installation, and sudo for the human installer**. Grok's routines must run as a separate unprivileged user without access to sudo, Docker administration, or the bridge's service files. Same-computer deployment avoids networking setup; separate OS accounts protect service credentials.
 
 1. Create a Discord application and bot. Leave privileged intents disabled. Invite it with **View Channels, Send Messages, Read Message History**; restrict its visibility to your private text channel. Copy the server, channel, and your own user IDs using Discord Developer Mode.
 2. Create a Grok webhook routine on this machine. Save the instructions from [prompts/grok-routine.md](prompts/grok-routine.md). Obtain its webhook URL and key. The currently supported URL is `https://api2.cursor.sh/automations/webhook/<id>`.
-3. Clone this private repository onto that machine and inspect the installer. While the implementation pull request is still a draft, select its branch:
+3. Clone this private repository onto that machine and inspect the installer. Until the implementation pull request is merged, select its branch:
 
    ```bash
    git clone --branch feat/local-bridge https://github.com/diandian2710/discord-grok-bridge.git

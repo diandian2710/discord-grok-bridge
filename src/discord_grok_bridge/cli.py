@@ -9,19 +9,15 @@ import os
 import pwd
 import secrets
 import sys
-import time
 import uuid
 from pathlib import Path
 
 import aiohttp
 
-from .config import ConfigError, Settings, digest, private_json, read_private
+from . import helper
+from .config import ConfigError, Settings, digest, private_json
 from .runtime import run
 from .store import Store
-
-
-def profile():
-    return Path.home() / ".config" / "discord-grok-bridge" / "agent.json"
 
 
 async def request(port: int, token: str, method: str, path: str, body=None):
@@ -29,7 +25,9 @@ async def request(port: int, token: str, method: str, path: str, body=None):
         raise ConfigError("invalid local API port")
     if not isinstance(token, str) or len(token) < 32 or len(token) > 128:
         raise ConfigError("invalid local API credential")
-    async with aiohttp.ClientSession(trust_env=False) as session:
+    async with aiohttp.ClientSession(
+        trust_env=False, json_serialize=lambda value: json.dumps(value, ensure_ascii=False)
+    ) as session:
         async with session.request(
             method,
             f"http://127.0.0.1:{port}{path}",
@@ -44,7 +42,21 @@ async def request(port: int, token: str, method: str, path: str, body=None):
 
 
 def setup(args):
-    if args.development:
+    if args.container:
+        if not Path("/.dockerenv").is_file() or os.geteuid() != 0:
+            raise ConfigError("container setup must run as root inside Docker")
+        if (
+            args.agent_uid is None
+            or args.agent_gid is None
+            or not (1 <= args.agent_uid <= 2**31 - 1 and 0 <= args.agent_gid <= 2**31 - 1)
+        ):
+            raise ConfigError("container setup requires an unprivileged helper UID and GID")
+        if args.development or args.agent_user or args.config or args.agent_config:
+            raise ConfigError("container setup cannot override its secret or helper paths")
+        service_path = Path("/state/service.json")
+        agent_path = Path("/agent/agent.json")
+        service_uid, agent_uid = 10001, args.agent_uid
+    elif args.development:
         service_path = args.config or Path("work/bridge-local/service.json").resolve()
         agent_path = args.agent_config or service_path.parent / "agent.json"
         service_uid = agent_uid = None
@@ -89,6 +101,17 @@ def setup(args):
     agent_profile = {"schema": "discord-grok.agent.v1", "port": cfg.port, "token": agent_token}
     if service_uid is None:
         private_json(agent_path, agent_profile)
+    elif args.container:
+        os.chown(service_path.parent, 10001, 10001)
+        os.chown(service_path, 10001, 10001)
+        try:
+            private_json(agent_path, agent_profile)
+            os.chown(agent_path.parent, args.agent_uid, args.agent_gid)
+            os.chown(agent_path, args.agent_uid, args.agent_gid)
+        except Exception:
+            service_path.unlink(missing_ok=True)
+            agent_path.unlink(missing_ok=True)
+            raise ConfigError("cannot write Docker helper profile; setup rolled back") from None
     else:
         # Never write into an agent-controlled home directory with root privileges.
         child = os.fork()
@@ -119,63 +142,25 @@ def setup(args):
 
 
 async def agent_command(args):
-    cfg = read_private(args.agent_config or profile())
-    if set(cfg) != {"schema", "port", "token"} or cfg["schema"] != "discord-grok.agent.v1":
-        raise ConfigError("invalid helper profile")
-    jobs_dir = (args.agent_config or profile()).resolve().parent / "jobs"
-    if jobs_dir.is_dir() and not jobs_dir.is_symlink():
-        for old_handle in jobs_dir.glob("*.json"):
-            if old_handle.lstat().st_mtime < time.time() - 7 * 86400:
-                old_handle.unlink()
-    if args.command == "doctor":
-        result = await request(cfg["port"], cfg["token"], "GET", "/v1/health")
-        print(json.dumps(result))
+    return await helper.agent_command(args, request)
+
+
+async def admin_command(args):
+    path = args.config or Path(
+        "/state/service.json"
+        if args.command == "container-health"
+        else "/var/lib/discord-grok-bridge/service.json"
+    )
+    cfg = Settings.load(path)
+    if args.command == "container-health":
+        result = await request(cfg.port, cfg.admin_token, "GET", "/v1/status")
         return (
             0
             if all(result.get(k) is True for k in ("discord_ready", "worker_alive", "catchup_ok"))
             else 1
         )
-    if args.command == "claim":
-        result = await request(cfg["port"], cfg["token"], "POST", "/v1/claim", {})
-        job = result["job"]
-        if job is None:
-            print('{"job":null}')
-            return 0
-        # Persist capability privately; do not expose it in model output or command arguments.
-        handle = (
-            (args.agent_config or profile()).resolve().parent / "jobs" / (f"{job['event_id']}.json")
-        )
-        private_json(handle, job)
-        visible = {k: v for k, v in job.items() if k != "reply_capability"}
-        visible["handle"] = str(handle)
-        print(json.dumps({"job": visible}, ensure_ascii=False))
-        return 0
-    handle = read_private(args.job)
-    if handle.get("schema") != "discord-grok.job.v1":
-        raise ConfigError("invalid job handle")
-    text = "" if args.no_reply else sys.stdin.read(20001)
-    if len(text) > 20000:
-        raise ConfigError("reply exceeds 20000 characters")
-    body = {k: handle[k] for k in ("event_id", "generation", "reply_capability")}
-    body.update(text=text, no_reply=args.no_reply)
-    receipt = await request(cfg["port"], cfg["token"], "POST", "/v1/reply", body)
-    # Keep only retry authorization; erase the input/history after accepted completion.
-    private_json(
-        args.job,
-        {
-            k: handle[k]
-            for k in ("schema", "event_id", "generation", "reply_capability", "expires_at")
-        },
-    )
-    print(json.dumps(receipt))
-    return 0
-
-
-async def admin_command(args):
-    path = args.config or Path("/var/lib/discord-grok-bridge/service.json")
-    cfg = Settings.load(path)
     if args.command == "run":
-        await run(cfg, path.parent)
+        await run(cfg, path.parent, container=args.container)
         return 0
     if args.command == "status":
         result = await request(cfg.port, cfg.admin_token, "GET", "/v1/status")
@@ -219,6 +204,9 @@ def parser():
     commands = result.add_subparsers(dest="command", required=True)
     wizard = commands.add_parser("setup", help="configure the local service and helper")
     wizard.add_argument("--agent-user")
+    wizard.add_argument("--container", action="store_true")
+    wizard.add_argument("--agent-uid", type=int)
+    wizard.add_argument("--agent-gid", type=int)
     wizard.add_argument("--development", action="store_true")
     wizard.add_argument("--config", type=Path)
     wizard.add_argument("--agent-config", type=Path)
@@ -228,9 +216,11 @@ def parser():
         if command == "reply":
             sub.add_argument("--job", type=Path, required=True)
             sub.add_argument("--no-reply", action="store_true")
-    for command in ("run", "status", "recover"):
+    for command in ("run", "status", "recover", "container-health"):
         sub = commands.add_parser(command)
         sub.add_argument("--config", type=Path)
+        if command == "run":
+            sub.add_argument("--container", action="store_true")
         if command == "recover":
             sub.add_argument("--event", required=True)
             sub.add_argument(

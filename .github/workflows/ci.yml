@@ -20,8 +20,20 @@ jobs:
         with:
           version: '0.13.0'
       - run: uv sync --frozen --no-editable --python "${{ matrix.python }}"
-      - run: uv run --frozen --no-editable ruff check src tests
-      - run: uv run --frozen --no-editable ruff format --check src tests
+      - run: uv run --frozen --no-editable ruff check src tests deploy/docker-smoke.py
+      - run: uv run --frozen --no-editable ruff format --check src tests deploy/docker-smoke.py
       - run: uv run --frozen --no-editable pytest
       - run: uv run --frozen --no-editable bridge mock --state-dir work/mock-ci
       - run: bash -n deploy/install.sh
+
+  docker:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - run: docker compose config --quiet
+      - run: bash -n deploy/docker-setup.sh deploy/bridge
+      - run: docker compose build bridge
+      - run: python deploy/docker-smoke.py --work-dir work/docker-smoke

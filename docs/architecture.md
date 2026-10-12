@@ -20,12 +20,12 @@ flowchart LR
 
 The inbox, outbox, and request states share one database. Persist the request before showing “Queued.” Persist the reply before acknowledging its submission. The destination comes only from stored Discord event metadata.
 
-The selected deployment runs beside Grok using an authenticated loopback API and a terminal helper. The Linux installer isolates service credentials under a dedicated OS account. Remote runtime/callback support is outside v1.
+The selected deployment runs beside Grok using an authenticated loopback API and a terminal helper. The Docker path isolates service credentials/state in a named volume and gives Grok a host helper with a separate credential. The optional native Linux installer uses a dedicated OS account. Remote runtime/callback support is outside v1.
 
 ## Minimal setup target
 
 1. Create a Discord application, copy its bot token, and invite it to the private server with View Channel, Send Messages, and Read Message History only. Give access only to configured channels. Threads require separate explicit permissions if supported later.
-2. Run a setup wizard: hidden token/key input, choose guild/channel/owner IDs, supply Grok webhook details, select local or remote topology. Generate bridge authentication credentials automatically and save private files.
+2. Run a setup wizard: hidden token/key input, choose guild/channel/owner IDs, supply Grok webhook details, select Docker or native local deployment. Generate bridge authentication credentials automatically and save private files.
 3. Create one Grok webhook routine from the supplied adapter instructions. Run an actual round-trip check before reporting setup complete, then start the managed service.
 
 Use direct bot mentions initially. Discord makes mentioned-message content available without the privileged Message Content Intent. This avoids enabling broad message-content access and removes alias/role routing from the first setup. [Discord intent exceptions](https://docs.discord.com/developers/events/gateway#message-content-intent)

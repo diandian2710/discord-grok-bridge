@@ -1,0 +1,9 @@
+*
+!Dockerfile
+!.dockerignore
+!pyproject.toml
+!uv.lock
+!README.md
+!src/
+!src/discord_grok_bridge/
+!src/discord_grok_bridge/*.py

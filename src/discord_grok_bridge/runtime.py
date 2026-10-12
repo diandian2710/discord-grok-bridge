@@ -61,7 +61,7 @@ async def wake(session: aiohttp.ClientSession, settings: Settings, event: str):
 
 
 class Bridge(discord.Client):
-    def __init__(self, settings: Settings, store: Store):
+    def __init__(self, settings: Settings, store: Store, *, api_bind="127.0.0.1"):
         intents = discord.Intents.none()
         intents.guilds = True
         intents.guild_messages = True
@@ -70,6 +70,7 @@ class Bridge(discord.Client):
             allowed_mentions=discord.AllowedMentions.none(),
             max_ratelimit_timeout=30,
         )
+        self.api_bind = api_bind
         self.settings = settings
         self.store = store
         self.ready_for_work = False
@@ -91,7 +92,7 @@ class Bridge(discord.Client):
             build_app(self.store, self.settings, self.health), access_log=None
         )
         await self.runner.setup()
-        await web.TCPSite(self.runner, "127.0.0.1", self.settings.port).start()
+        await web.TCPSite(self.runner, self.api_bind, self.settings.port).start()
         self.worker_task = asyncio.create_task(self.work())
 
     async def close(self):
@@ -273,14 +274,18 @@ class Bridge(discord.Client):
             await asyncio.sleep(0.5)
 
 
-async def run(settings: Settings, directory: Path):
+async def run(settings: Settings, directory: Path, *, container=False):
+    if container and not Path("/.dockerenv").is_file():
+        raise RuntimeError("container networking requires Docker")
     os.umask(0o077)
     lock = InstanceLock(directory)
     store = Store(directory / "inbox.db", settings.capability_secret)
     try:
         store.recover_restart()
         store.revoke_unallowed(settings.guild_id, settings.channel_id, settings.author_id)
-        async with Bridge(settings, store) as client:
+        async with Bridge(
+            settings, store, api_bind="0.0.0.0" if container else "127.0.0.1"
+        ) as client:
             await client.start(settings.discord_token)
     finally:
         store.close()

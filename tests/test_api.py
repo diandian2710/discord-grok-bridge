@@ -77,7 +77,7 @@ async def test_mock_http_roundtrip_through_real_helper(
     from unittest.mock import AsyncMock
 
     from discord_grok_bridge import cli
-    from discord_grok_bridge.config import private_json
+    from discord_grok_bridge.config import private_json, read_private
     from discord_grok_bridge.runtime import Bridge
 
     profile = tmp_path / "agent/agent.json"
@@ -101,7 +101,7 @@ async def test_mock_http_roundtrip_through_real_helper(
         )
     )
     assert json.loads(capsys.readouterr().out)["ok"]
-    assert "text" not in cli.read_private(Path(claimed["handle"]))
+    assert "text" not in read_private(Path(claimed["handle"]))
     bridge = Bridge(settings, store)
     bridge.http.request = AsyncMock(return_value={"id": "98765"})
     try:
@@ -119,3 +119,33 @@ async def test_claim_revokes_queued_work_outside_current_policy(client, store):
     assert (await response.json())["job"] is None
     assert store.job(event)["error"] == "policy_changed"
     assert store.prepare_send() is None
+
+
+async def test_stdlib_host_helper_accepts_maximum_unicode_reply(client, store):
+    from discord_grok_bridge import helper
+
+    add(store)
+    port = client.server.port
+    job = (await helper.request(port, "a" * 40, "POST", "/v1/claim", {}))["job"]
+    body = {k: job[k] for k in ("event_id", "generation", "reply_capability")}
+    body.update(text="🦉" * 20000, no_reply=False)
+    receipt = await helper.request(port, "a" * 40, "POST", "/v1/reply", body)
+    assert receipt["ok"]
+    assert store.job(job["event_id"])["outcome"] == body["text"]
+
+
+async def test_stdlib_helper_reads_bounded_large_unicode_history(client, store):
+    from discord_grok_bridge import helper
+
+    for index in range(6):
+        add(store, message=str(123456 + index))
+        job = store.claim()
+        store.submit(
+            job["event_id"], job["generation"], job["reply_capability"], "🦉" * 20000, False
+        )
+        while chunk := store.prepare_send():
+            store.sent(chunk["id"], "98765")
+    add(store, message="123499")
+    job = (await helper.request(client.server.port, "a" * 40, "POST", "/v1/claim", {}))["job"]
+    assert len(job["history"]) == 6
+    assert job["history"][0]["assistant"] == "🦉" * 20000

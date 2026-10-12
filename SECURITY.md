@@ -5,7 +5,7 @@ The implemented v1 assumes one trusted Discord owner, one private channel, one G
 ## Implemented boundaries
 
 - Startup requires a bot token, webhook credential, valid guild/channel/owner IDs, and strong generated credentials. Only the configured human's direct mentions in the configured guild/channel are admitted. DMs, bots, and attachments are excluded.
-- The only inbound API binds to `127.0.0.1`. All routes require authentication; there is no public health endpoint. Access logs are disabled. Request bodies, text sizes, queue capacity, message rate, completion time, and retries are bounded.
+- Native deployment binds the API to `127.0.0.1`. Docker mode listens inside the container and Compose publishes it only to host `127.0.0.1:18792`. Docker setup requires Engine 28+ to avoid the older localhost-port isolation issue. All routes require authentication; there is no public health endpoint. Access logs are disabled. Request bodies, text sizes, queue capacity, message rate, completion time, and retries are bounded.
 - Agent and administration credentials are separate. The agent credential is stored only as a SHA-256 hash in the service config. Replies additionally require a hashed, request-scoped capability bound to the current attempt. Comparisons use constant-time primitives. Capabilities are not printed by the helper.
 - Reply requests accept a strict field set and cannot specify a destination, filesystem path, URL, or command. The server chooses the stored originating Discord channel and checks its current configuration before sending. Replayed accepted answers are idempotent; different final answers conflict.
 - Wakes carry no user text or reply capability. Configured webhook URLs require the known HTTPS provider host/path; redirects and environment proxy inheritance are disabled. Unknown provider hosts require an explicit reviewed code change.
@@ -16,13 +16,15 @@ The implemented v1 assumes one trusted Discord owner, one private channel, one G
 
 ## Boundaries that still depend on deployment
 
-The default installer requires Linux/systemd and Grok running as an unprivileged user. A Grok process with root, sudo, Docker administration, or access to the service files can defeat OS isolation. The explicit development mode runs under one account and trusts that account's processes. Loopback authentication remains required in both modes.
+The Docker path needs no systemd. It runs non-root with a read-only root filesystem, no added runtime capabilities, and private service state in a named volume. The scoped helper profile is the only file shared with Grok. Image build context is an allowlist and excludes `.git`, profiles, databases, logs, and temporary files. The temporary root setup container can write only its mounted state/helper paths and has networking disabled.
+
+The optional native installer requires Linux/systemd. Both paths require Grok running as an unprivileged user. A Grok process with root, sudo, Docker administration, or access to the service files can defeat OS isolation. The explicit development mode runs under one account and trusts that account's processes. Loopback authentication remains required in both modes.
 
 Prompt instructions do not prevent an authorized Grok runtime from abusing its own tools. Restrict those tools and permissions independently. Request deduplication prevents repeated visible answers; exactly-once external tool actions require an agent execution ledger. A claimed job is not automatically reassigned after a crash.
 
 SQLite file permissions are not encryption. Retention does not securely erase old SQLite pages, journals, backups, or separately created reply files. Protect disk/backups and remove temporary reply files in the routine.
 
-Offline tests exercise the security boundaries and failures. They do not prove live provider compatibility or the Linux installer/systemd behavior. No live credentials or live deployment have been used in verification. Perform a real request/final-answer smoke test before relying on the service.
+Offline tests exercise the security boundaries and failures. A Docker smoke test verifies real container startup, scoped host helper calls, health, duplicate replies, and state across container recreation using mocked external transports. These checks do not prove live provider compatibility or the optional Linux installer/systemd behavior. No live credentials or live deployment have been used in verification. Perform a real request/final-answer smoke test before relying on the service.
 
 ## Reporting
 
