@@ -1,6 +1,6 @@
-# Proposed architecture
+# Architecture
 
-Status: proposal pending backend and deployment selection. Priorities: security first; simple setup within that boundary; consistent message lifecycle and conversation context.
+Status: local, single-owner Grok Bot routine topology selected. The text runtime and helper are implemented and tested offline; live integration and Linux service installation remain unverified.
 
 ## Deployment and components
 
@@ -20,7 +20,7 @@ flowchart LR
 
 The inbox, outbox, and request states share one database. Persist the request before showing “Queued.” Persist the reply before acknowledging its submission. The destination comes only from stored Discord event metadata.
 
-Prefer running beside Grok with an authenticated loopback API and a helper that reads/writes JSON through stdin/stdout. For a remote Grok runtime, use a private network with TLS and scoped credentials. Public callback hosting is an explicit separate deployment decision. The wizard must not select an unreachable localhost callback for a remote runtime.
+The selected deployment runs beside Grok using an authenticated loopback API and a terminal helper. The Linux installer isolates service credentials under a dedicated OS account. Remote runtime/callback support is outside v1.
 
 ## Minimal setup target
 
@@ -30,7 +30,7 @@ Prefer running beside Grok with an authenticated loopback API and a helper that 
 
 Use direct bot mentions initially. Discord makes mentioned-message content available without the privileged Message Content Intent. This avoids enabling broad message-content access and removes alias/role routing from the first setup. [Discord intent exceptions](https://docs.discord.com/developers/events/gateway#message-content-intent)
 
-The desired commands are `bridge setup`, `bridge doctor`, and `bridge run`. They are not implemented yet.
+The implemented commands are `bridge setup`, `bridge doctor`, `bridge run`, `bridge claim`, `bridge reply`, `bridge status`, `bridge recover`, and `bridge mock`. Doctor checks readiness; the real final-reply smoke test remains a separate manual step.
 
 ## Grok integration contract
 
@@ -56,7 +56,7 @@ The routine must durably deduplicate events and return a cached outcome on repla
 | Output | Persistent response and chunk IDs; checkpoint each confirmed Discord message ID |
 | Failure | Explicit expired, failed, or uncertain states, with a safe recovery command |
 
-Suggested lifecycle: `queued → waking → awaiting_reply → reply_queued → delivered`. `failed`, `expired`, and `uncertain` are explicit alternatives. Persist transitions atomically. A fast callback can arrive before the wake response; its accepted final state must never be overwritten by the wake worker.
+Implemented lifecycle: `queued → waking → awaiting → claimed → reply → delivered`. A helper may claim before the wake returns. `failed` and `uncertain` are alternatives; expiry creates a recorded failure notice in the `reply` state. Status preserves the error category after that notice is delivered. Persist transitions atomically. A fast callback can arrive before the wake response; its accepted final state must never be overwritten by the wake worker.
 
 Do not let a later request overtake an unresolved earlier request in the same conversation. Expiry releases capacity after recording the outcome; it does not silently delete the request. Reject expired capabilities and outdated generations. Record no-reply completion explicitly so an intentionally silent task cannot block the queue indefinitely.
 
