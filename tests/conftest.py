@@ -32,4 +32,6 @@ def store(tmp_path, clock):
 
 
 def add(store, message="123456", channel="23456", **kwargs):
+    # Most store tests exercise the optional "Queued." chunk; pass ack=False to omit it.
+    kwargs.setdefault("ack", True)
     return store.add(message, "12345", channel, "34567", "  hello\nworld  ", **kwargs)[0]

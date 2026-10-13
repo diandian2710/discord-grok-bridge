@@ -79,7 +79,7 @@ async def test_claim_stdout_does_not_disclose_capability_or_token(tmp_path, monk
 def test_mock_pipeline_runs_without_live_credentials(tmp_path, capsys):
     assert cli.mock_roundtrip(tmp_path / "state") == 0
     result = json.loads(capsys.readouterr().out)
-    assert result["messages"] == ["Queued.", "Mock Grok reply"]
+    assert result["messages"] == ["Mock Grok reply"]
 
 
 async def test_recovery_requires_explicit_duplicate_risk(settings, tmp_path, monkeypatch):
@@ -93,3 +93,9 @@ async def test_recovery_requires_explicit_duplicate_risk(settings, tmp_path, mon
     with pytest.raises(ConfigError, match="accept-duplicate-risk"):
         await cli.admin_command(args)
     fake_request.assert_not_called()
+
+
+def test_ack_message_defaults_off_and_must_be_bool(settings):
+    assert settings.validate().ack_message is False
+    with pytest.raises(ConfigError, match="ack_message"):
+        replace(settings, ack_message="yes").validate()

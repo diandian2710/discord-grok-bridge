@@ -194,6 +194,7 @@ class Bridge(discord.Client):
                 timeout=cfg.timeout_seconds,
                 limit=cfg.queue_limit,
                 rate=cfg.rate_per_minute,
+                ack=cfg.ack_message,
             )
             if fresh:
                 log.info("accepted event=%s", event)

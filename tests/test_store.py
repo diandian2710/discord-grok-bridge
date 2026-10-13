@@ -261,3 +261,34 @@ def test_new_owner_does_not_receive_previous_owners_history(store):
     store.add("123457", "12345", "23456", "45678", "new owner request")
     job = store.claim()
     assert job["history"] == []
+
+
+def test_without_ack_only_final_answer_is_posted(store):
+    event = add(store, ack=False)
+    assert store.prepare_send() is None
+    job = store.claim()
+    submit(store, job, "final answer")
+    chunk = store.prepare_send()
+    assert chunk["text"] == "final answer" and chunk["ordinal"] == 1
+    store.sent(chunk["id"], "111")
+    assert store.job(event)["state"] == "delivered"
+    assert store.db.execute("SELECT COUNT(*) FROM outbox").fetchone()[0] == 1
+
+
+def test_without_ack_permanent_reply_failure_still_fails_request(store):
+    event = add(store, ack=False)
+    job = store.claim()
+    submit(store, job, "final answer")
+    chunk = store.prepare_send()
+    store.send_error(chunk["id"], permanent=True)
+    assert store.job(event)["state"] == "failed"
+
+
+def test_without_ack_expiry_notice_is_still_posted(store, clock):
+    event = add(store, ack=False, timeout=60)
+    clock[0] += 61
+    store.expire()
+    chunk = store.prepare_send()
+    assert "expired" in chunk["text"]
+    store.sent(chunk["id"], "111")
+    assert store.job(event)["state"] == "delivered"
