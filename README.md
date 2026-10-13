@@ -1,132 +1,141 @@
-# discord-grok-bridge
+<h1 align="center">discord-grok-bridge</h1>
 
-Talk to your Grok Bot assistant from Discord. @mention your own bot in a private channel, and the answer comes back as a reply in the same channel.
+<p align="center">
+  <strong>Talk to your Grok Bot assistant from Discord.</strong>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.12%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.12+">
+  <img src="https://img.shields.io/badge/uv-managed-DE5FE9?style=flat-square" alt="uv">
+  <img src="https://img.shields.io/badge/Linux-supported-FCC624?style=flat-square&logo=linux&logoColor=black" alt="Linux">
+  <img src="https://img.shields.io/badge/macOS-dev%20mode-8E8E93?style=flat-square&logo=apple&logoColor=white" alt="macOS">
+  <img src="https://img.shields.io/badge/Discord-bot-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord bot">
+  <img src="https://img.shields.io/badge/network-outbound%20only-2EA44F?style=flat-square" alt="outbound only">
+</p>
+
+<p align="center">
+  You @mention your bot in a private Discord channel. <code>bridge</code> saves the message locally and wakes your Grok routine (webhook).
+  The routine fetches it with <code>bridge claim</code>, answers with <code>bridge reply</code>, and the bridge posts the answer back to Discord.
+</p>
+
+---
+
+> [!IMPORTANT]
+> **🤖 If you are an agent: read [`AGENTS.md`](AGENTS.md) first and follow it step by step.**
+> Ask the user for one thing at a time. The bot token and webhook key must **never** go through chat. Collect them only through masked or secure input.
+
+## Features
+
+- **No lost messages**: each request is saved to a local SQLite inbox before anything else happens. Messages missed while disconnected are recovered on reconnect, and duplicate replies are ignored.
+- **Outbound only**: no public port or callback URL. The local API listens on `127.0.0.1` only.
+- **Allowlisted by default**: one server, one channel, one user. Everyone and everything else is ignored.
+- **Grok never sees the Discord token**: it only gets a scoped helper credential for `claim` / `reply`.
+- Text in and out, with long answers split automatically. No privileged Discord intents needed.
+
+```
+Discord ──@mention──▶ bridge (SQLite inbox) ──webhook wake──▶ Grok routine
+        ◀───────── bridge (outbox) ◀──── bridge claim / bridge reply ┘
+```
 
 ## Quick start
 
-Copy this into a chat with your Grok Bot assistant (it must be able to run commands on a persistent Linux machine):
+Send this to your Grok Bot assistant (it needs to run commands on a persistent Linux machine):
 
-> Read AGENTS.md in https://github.com/diandian2710/discord-grok-bridge and set up the Discord bridge for me step by step.
-
-Your assistant will check prerequisites, then walk you through creating the Discord bot one step at a time. It collects your bot token and webhook key **without you ever pasting them into chat**, starts the bridge, and runs a test with you. The full playbook it follows is in [AGENTS.md](AGENTS.md).
-
-## What it does
-
-- Connects **one Discord bot, one server, one private text channel and one person** (you) to your Grok Bot.
-- Runs on the **same machine as Grok Bot**. No public URL, port forwarding or cloud hosting is needed.
-- Grok never gets the Discord token. It fetches requests and submits answers through a small local helper (`bridge claim` / `bridge reply`).
-- Requests and replies are stored in SQLite before anything is acknowledged, so they survive restarts. Duplicate replies are ignored.
-
-## What you need
-
-- A Linux (or macOS) machine where Grok Bot runs commands, with **Python 3.12+** and **[uv](https://docs.astral.sh/uv/)**.
-- A Discord account and a server you control.
-- A **webhook-triggered Grok routine** on that machine. Its URL looks like `https://api2.cursor.sh/automations/webhook/<id>`, and it comes with a key.
-- About 10 minutes.
-
-## How it works
-
-```text
-You: @Bot do X  →  bridge checks it's you, in your channel  →  saves to SQLite
-               →  pings your Grok routine (webhook, no message content)
-Grok routine   →  bridge claim  →  does the work  →  bridge reply < answer.txt
-Bridge         →  posts the answer as a reply to your message in Discord
+```
+Read AGENTS.md in https://github.com/diandian2710/discord-grok-bridge and set up the Discord bridge for me step by step.
 ```
 
-- Requests run one at a time.
-- The last six exchanges are passed to Grok as context; your native Grok chat history is not synced.
-- An optional interim "Queued." message can be turned on with `"ack_message": true` in `service.json`. It is off by default.
+It installs everything itself. You only need to **create the Discord bot when it asks**, copy three IDs, and enter the bot token and webhook key into a secure input.
 
-## Using it
+> [!NOTE]
+> When setup is done, **send `@YourBot hello` in your channel**. Setup only counts as finished once the real answer comes back.
 
-- In your configured channel, **@mention the bot** (a real user mention, not a role) and type your request, e.g. `@MyBridge summarise today's emails`.
-- Text only, up to 4,000 characters. Attachments are rejected with a short notice.
-- Answers up to 20,000 characters are split across several Discord messages.
-- Limits: 10 requests per minute, 100 waiting, and 15 minutes per request before it expires with a notice.
-- Editing a message doesn't rerun it; send a new mention instead.
+Other ways to run it: [Docker](#other-deployments) · [native systemd](#other-deployments) · manual install ↓
 
-## Health checks and debugging
-
-All commands run from the repo folder. `work/bridge-local/` is the development-mode state folder.
+### Manual install
 
 ```bash
-# Overall health (Discord connected, worker alive, catch-up OK)
-.venv/bin/bridge doctor --agent-config work/bridge-local/agent.json
-
-# Live log
-tail -f work/bridge-local/bridge.log
-
-# Request states (queued/claimed/reply/delivered/failed/uncertain), no message text
-.venv/bin/bridge status --config work/bridge-local/service.json
+git clone https://github.com/diandian2710/discord-grok-bridge.git && cd discord-grok-bridge
+uv sync --frozen --no-editable
+uv run --frozen --no-editable bridge setup --development   # hidden prompts: token, IDs, webhook URL/key
+setsid nohup deploy/run-loop.sh >/dev/null 2>&1 </dev/null &   # auto-restart loop (no systemd needed)
+.venv/bin/bridge doctor --agent-config work/bridge-local/agent.json   # all true = installed
 ```
 
-The local API also has an HTTP health endpoint at `http://127.0.0.1:18792/v1/health`. It needs the **helper token** from `agent.json`. This passes it to curl via stdin, so it never shows up in your terminal or shell history:
+You'll need:
+- **Discord:** a bot with **no privileged intents**, invited with only **View Channels**, **Send Messages** and **Read Message History**; plus your server, channel and user IDs (turn on Developer Mode to copy them).
+- **Grok:** a **webhook-triggered routine** on the same machine (URL `https://api2.cursor.sh/automations/webhook/<id>` and a key), using the instructions in [`prompts/grok-routine.md`](prompts/grok-routine.md).
+
+## Integration
+
+**Receive**: the routine runs `bridge claim`. It returns `{"job":null}`, or a job with `event_id`, `conversation_id`, `text`, `history` (the last six exchanges) and a private `handle` path. **A wake is only a hint; always claim. Duplicate replies with the same text are safe.**
+
+**Reply**:
 
 ```bash
-python3 -c 'import json;print("Authorization: Bearer "+json.load(open("work/bridge-local/agent.json"))["token"])' \
-  | curl -s -H @- http://127.0.0.1:18792/v1/health
+bridge claim --agent-config work/bridge-local/agent.json
+bridge reply --agent-config work/bridge-local/agent.json --job '<handle>' < answer.txt   # text via stdin
+bridge reply --agent-config work/bridge-local/agent.json --job '<handle>' --no-reply      # finish silently
 ```
 
-(`/v1/status` is the admin version. It uses `admin_token` from `service.json`; prefer `bridge status` for that.)
+- Input is text only, up to 4,000 characters. Replies can be up to 20,000 characters and are split into Discord-sized messages. Mentions and link previews are disabled.
+- Requests run one at a time. Limits are 10 per minute and 100 queued, and a request expires with a notice after 15 minutes.
+- **Usage:** in the channel, write `@YourBot your request`. It must be a direct user mention, not a role. Edits don't rerun a request; send a new one.
+- Optional settings in `service.json`: `"ack_message": true` posts "Queued." first (off by default), and `"debug": true` logs why messages are ignored.
 
-What to look for in the log:
+Design and delivery guarantees: [`docs/architecture.md`](docs/architecture.md).
 
-- `gateway_ready catchup_complete`: connected. It reappears after every reconnect, and messages sent while disconnected are picked up then.
-- `accepted event=…`: your message was taken.
-- `wake event=… result=accepted`: Grok was pinged.
-- `gateway_disconnected` / `gateway_resumed`: Discord connection dropped and came back. Messages sent in between are picked up by the catch-up that follows, so a short delay is normal.
-- If you sent a message and see no `accepted`, the bridge ignored it. By default, ignored messages are not logged. Turn on **debug mode** to see why.
+## Operations
 
-**Debug mode:** start the bridge with `BRIDGE_DEBUG=1` in its environment, or set `"debug": true` in `service.json`, then restart. With `deploy/run-loop.sh`, run `BRIDGE_DEBUG=1 setsid nohup deploy/run-loop.sh >/dev/null 2>&1 </dev/null &`. Each ignored message then logs one line with its ID and a reason, never its text:
-
-| Reason | Meaning |
+| What | Command |
 | --- | --- |
-| `wrong_guild` / `wrong_channel` | Sent somewhere other than the configured server or channel |
-| `bot` | Sent by a bot |
-| `not_author` | Sent by someone other than the configured user (check your user ID) |
-| `no_mention` | Didn't directly @mention the bot (role mentions and plain replies don't count) |
-| `attachment` | Had an attachment (you also get a notice in Discord) |
-| `rejected_429` / `rejected_422` | Rate limit or full queue / empty or too-long text |
-| `not_ready_recovered_on_catchup` | Arrived while disconnected; it is picked up after reconnecting |
+| Health | `.venv/bin/bridge doctor --agent-config work/bridge-local/agent.json` |
+| Request states | `.venv/bin/bridge status --config work/bridge-local/service.json` |
+| Live log | `tail -f work/bridge-local/bridge.log` |
+| Debug mode (log ignored messages) | restart with `BRIDGE_DEBUG=1` or `"debug": true` |
+| Recover a stuck request | `bridge recover --config … --event <id> --action retry-wake\|retry-send\|skip` |
+| Stop | `pkill -f run-loop.sh; pkill -f "bridge run --config"` |
+| Upgrade after pulling code | `uv sync --frozen --no-editable --reinstall-package discord-grok-bridge`, then restart |
 
-| Problem | Fix |
+Health endpoint: `GET http://127.0.0.1:18792/v1/health` with the helper token. For the copy-paste curl that keeps the token hidden, see [troubleshooting](docs/troubleshooting.md#health-checks).
+
+## Common problems
+
+| Symptom | Fix |
 | --- | --- |
-| Log loops `operation failed` / `401 Unauthorized` | Wrong Discord token. Use the **Bot → Reset Token** value, which has two dots; it is not the Client Secret. Delete `service.json` and `agent.json`, then rerun setup. |
-| `catchup_failed`, or doctor shows `catchup_ok: false` | Wrong server/channel ID, or the bot lacks View Channels / Send Messages / Read Message History there. Fix it and restart. |
-| No `accepted` after a mention | Turn on debug mode and read the `reason=`. Check the channel and user IDs; they are different numbers. |
-| `wake … result=rejected` | Wrong webhook URL or key, or the routine is disabled. |
-| A request stuck as `uncertain` or blocking the queue | Check what happened in Grok and Discord first. Then run `bridge recover --config work/bridge-local/service.json --event <id> --action retry-wake --accept-duplicate-risk` (or `retry-send`, or `skip`). Stuck requests expire after 15 minutes. |
-| Nothing after a reboot | Start the loop again: `setsid nohup deploy/run-loop.sh >/dev/null 2>&1 </dev/null &` |
+| Bot doesn't reply | Run `doctor`, then turn on debug mode and look for `ignored … reason=`. See [troubleshooting](docs/troubleshooting.md) |
+| Log loops `401` / `Improper token` | Wrong token. Use **Bot → Reset Token** (it has two dots); it is not the Client Secret |
+| Replies come minutes late | `gateway_disconnected` / `gateway_resumed` in the log; the message was recovered by catch-up |
+| `wake … result=rejected` | Wrong webhook URL or key, or the routine is disabled |
+| Queue stuck / `uncertain` | Inspect with `bridge status`, then run `bridge recover` |
+| `PyNaCl is not installed` warning | Harmless; voice isn't used |
 
-Stop the bridge with `pkill -f run-loop.sh; pkill -f "bridge run --config"`.
+Full guide, organised by symptom: **[`docs/troubleshooting.md`](docs/troubleshooting.md)**.
 
-## Security summary
+## Security
 
-- Only your user ID, in your one channel, can trigger work. Bots, other users, other channels and attachments are refused.
-- Replies have mentions and link previews disabled. Grok can't choose where replies go.
-- Secrets are entered through hidden prompts and stored in owner-only (0600) files. Never paste them into Discord, chat, issues or commits.
-- **Development mode** (the quick-start path) trusts every process under your OS account. Your assistant could read the Discord token. Use it only on a machine you trust. For credential isolation, use the Docker or native installer described in [SECURITY.md](SECURITY.md) and the docs, where Grok runs as a separate unprivileged user.
+- Development mode (the quick-start path) trusts every process under your OS account, so **your assistant can read the Discord token**. Use it only on a machine you trust.
+- Secrets go in through hidden prompts and are stored in 0600 files. Never paste them into Discord, chat, issues or commits.
 - Conversation text is cleared from the database after 7 days. This is logical deletion, not encryption.
 
-## Other ways to run it
+Details: [`SECURITY.md`](SECURITY.md).
 
-- **Docker** (Docker Engine 28+): `./deploy/docker-setup.sh <grok-user>` then `docker compose up -d bridge`. This keeps credentials in a Docker volume, and the API is published only on `127.0.0.1:18792`. Grok must not have Docker access.
-- **Native systemd service** (Linux with sudo): `sudo ./deploy/install.sh <grok-user>`. This uses a dedicated service account. Manage it with `systemctl` / `journalctl -u discord-grok-bridge`.
+## Other deployments
+
+- **Docker** (Engine 28+): `./deploy/docker-setup.sh <grok-user>` then `docker compose up -d bridge`. Credentials live in a Docker volume, and the API is published only on `127.0.0.1:18792`. Grok must not have Docker access.
+- **Native systemd** (Linux + sudo): `sudo ./deploy/install.sh <grok-user>`. The bridge runs under a dedicated service account, and Grok runs as a separate unprivileged user. Manage it with `systemctl` / `journalctl -u discord-grok-bridge`.
 
 ## Development
 
 ```bash
 uv sync --frozen --no-editable
 uv run --frozen --no-editable pytest
-uv run --frozen --no-editable ruff check src tests
+uv run --frozen --no-editable ruff check src tests && uv run --frozen --no-editable ruff format --check src tests
 uv run --frozen --no-editable bridge mock --state-dir work/mock-bridge   # no credentials, no network
 ```
 
-After changing code, reinstall with `uv sync --frozen --no-editable --reinstall-package discord-grok-bridge` before restarting.
+`src/discord_grok_bridge/` holds the code: `runtime` (Discord and the worker) · `store` (SQLite queue) · `api` (local API) · `helper` (claim/reply) · `cli` · `config`. Contributor rules are at the end of [`AGENTS.md`](AGENTS.md).
 
-## More
+---
 
-- [AGENTS.md](AGENTS.md): the step-by-step setup guide your assistant follows, plus contributor rules.
-- [SECURITY.md](SECURITY.md): threat model and isolation boundaries.
-- [docs/architecture.md](docs/architecture.md): design and delivery guarantees.
-- [prompts/grok-routine.md](prompts/grok-routine.md): instructions for the Grok webhook routine.
+This project uses the official Discord API but is not affiliated with Discord Inc. "Grok Bot" refers to your own assistant; this is not an official Grok product.
