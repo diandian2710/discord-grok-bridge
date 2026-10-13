@@ -1,16 +1,31 @@
-# Security requirements
+# Security
 
-Status: design requirements, not implemented controls.
+The implemented v1 assumes one trusted Discord owner, one private channel, one Grok runtime, and a trusted host administrator. This is not a shared public bot service.
 
-- Reject startup with missing credentials or empty guild/channel/author allowlists. Ignore DMs, bot authors, and unaddressed messages in v1. Authorize before storing or forwarding message content.
-- Scope Discord visibility and permissions to selected channels. Never request Administrator.
-- Require authentication even on loopback. Separate outbound wake credentials, agent claim credentials, and request-scoped reply capabilities. Compare tokens using constant-time primitives; store capability hashes and bind them to request, attempt, and expiry.
-- Accept reply content only for a stored request and current generation. No caller-chosen destinations, callback URLs, shell commands, or filesystem paths. Exact accepted replays are idempotent; different payloads conflict.
-- Keep remote APIs private and encrypted. Restrict the configured Grok webhook host/path, require HTTPS, and disable redirects so credentials cannot be forwarded to another destination. Never derive URLs from Discord text.
-- Text only initially; bounded input/output lengths, request body limits, queue capacity, per-author rate limits, request expiry, and finite retry policy. Disable all Discord mentions and automatic link previews where appropriate.
-- Persist state in a private directory (0700) with private secret/database files (0600), including SQLite sidecars. Lock dependencies. Keep credentials out of source, examples, logs, URLs, process arguments, and exception dumps.
-- Configure retention for input/reply content separately from minimal deduplication records. Backups contain conversation content and require the same access controls. SQLite file permissions are not encryption at rest.
-- Treat Discord text as untrusted input. Never interpolate it into shell commands. Adapter instructions do not substitute for enforced authorization or tool restrictions in Grok.
-- The bridge must keep the Discord token outside the agent's accessible filesystem/process environment. A routine with unrestricted execution under the bridge's OS identity can read its secrets; use separate identities or containers for a stronger boundary. A compromised host administrator remains outside this threat model.
-- Use structured logs containing request IDs and state/error categories, without message bodies or secrets by default. Health checks expose minimal liveness; authenticated diagnostics inspect Gateway readiness, worker progress, and queue age.
-- Require a local mock round-trip and security regression checks before the first live deployment. Require a real Grok round-trip before declaring the adapter compatible.
+## Implemented boundaries
+
+- Startup requires a bot token, webhook credential, valid guild/channel/owner IDs, and strong generated credentials. Only the configured human's direct mentions in the configured guild/channel are admitted. DMs, bots, and attachments are excluded.
+- Native deployment binds the API to `127.0.0.1`. Docker mode listens inside the container and Compose publishes it only to host `127.0.0.1:18792`. Docker setup requires Engine 28+ to avoid the older localhost-port isolation issue. All routes require authentication; there is no public health endpoint. Access logs are disabled. Request bodies, text sizes, queue capacity, message rate, completion time, and retries are bounded.
+- Agent and administration credentials are separate. The agent credential is stored only as a SHA-256 hash in the service config. Replies additionally require a hashed, request-scoped capability bound to the current attempt. Comparisons use constant-time primitives. Capabilities are not printed by the helper.
+- Reply requests accept a strict field set and cannot specify a destination, filesystem path, URL, or command. The server chooses the stored originating Discord channel and checks its current configuration before sending. Replayed accepted answers are idempotent; different final answers conflict.
+- Wakes carry no user text or reply capability. Configured webhook URLs require the known HTTPS provider host/path; redirects and environment proxy inheritance are disabled. Unknown provider hosts require an explicit reviewed code change.
+- The Linux installer gives the service its own account, private state directory, and hardened systemd unit. Grok receives only the separate helper profile. The service's dependencies and source are installed under `/opt`, outside Grok's writable files. The installer requires a system Python and does not fetch a managed interpreter into an inaccessible root home directory.
+- Database/secrets and atomic temporary config files use restrictive modes. SQLite uses WAL and FULL synchronous commits. A service lock excludes multiple runtime owners. Conversation bodies are logically cleared after retention; minimal tombstones prevent old-message duplication. Helper handles are compacted after accepted replies and aged out on future helper invocations.
+- Messages and history are never evaluated as shell commands. The routine uses file tools plus stdin redirection. Discord sends disable all mentions and automatic link previews. Logs contain event IDs and error categories, not message bodies or credentials.
+- A persisted request is required before acknowledgment. A reply is stored before the API returns success. No indefinite replay of uncertain wakes or old ambiguous sends is performed.
+
+## Boundaries that still depend on deployment
+
+The Docker path needs no systemd. It runs non-root with a read-only root filesystem, no added runtime capabilities, and private service state in a named volume. The scoped helper profile is the only file shared with Grok. Image build context is an allowlist and excludes `.git`, profiles, databases, logs, and temporary files. The temporary root setup container can write only its mounted state/helper paths and has networking disabled.
+
+The optional native installer requires Linux/systemd. Both paths require Grok running as an unprivileged user. A Grok process with root, sudo, Docker administration, or access to the service files can defeat OS isolation. The explicit development mode runs under one account and trusts that account's processes. Loopback authentication remains required in both modes.
+
+Prompt instructions do not prevent an authorized Grok runtime from abusing its own tools. Restrict those tools and permissions independently. Request deduplication prevents repeated visible answers; exactly-once external tool actions require an agent execution ledger. A claimed job is not automatically reassigned after a crash.
+
+SQLite file permissions are not encryption. Retention does not securely erase old SQLite pages, journals, backups, or separately created reply files. Protect disk/backups and remove temporary reply files in the routine.
+
+Offline tests exercise the security boundaries and failures. A Docker smoke test verifies real container startup, scoped host helper calls, health, duplicate replies, and state across container recreation using mocked external transports. These checks do not prove live provider compatibility or the optional Linux installer/systemd behavior. No live credentials or live deployment have been used in verification. Perform a real request/final-answer smoke test before relying on the service.
+
+## Reporting
+
+Keep reports private while they contain deployment details or credentials. Never put credentials in GitHub issues or Discord. Stop the service, revoke affected tokens, and regenerate local profiles if credentials are exposed.

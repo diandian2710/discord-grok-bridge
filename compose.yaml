@@ -1,0 +1,55 @@
+name: discord-grok-bridge
+services:
+  bridge:
+    image: discord-grok-bridge:local
+    build: .
+    user: '10001:10001'
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    mem_limit: 256m
+    cpus: 1.0
+    stop_grace_period: 20s
+    ports:
+      - '127.0.0.1:18792:18792'
+    volumes:
+      - state:/state
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    logging:
+      driver: json-file
+      options:
+        max-size: '5m'
+        max-file: '3'
+  setup:
+    image: discord-grok-bridge:local
+    profiles: [tools]
+    user: '0:0'
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
+    security_opt: [no-new-privileges:true]
+    stdin_open: true
+    tty: true
+    healthcheck:
+      disable: true
+    command:
+      - setup
+      - --container
+      - --agent-uid
+      - '${BRIDGE_AGENT_UID:-1000}'
+      - --agent-gid
+      - '${BRIDGE_AGENT_GID:-1000}'
+    volumes:
+      - state:/state
+      - type: bind
+        source: '${BRIDGE_AGENT_DIR:-./.docker-agent}'
+        target: /agent
+        bind:
+          create_host_path: false
+volumes:
+  state:

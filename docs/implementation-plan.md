@@ -1,35 +1,34 @@
-# Implementation plan
+# Implementation status
 
-This is the initial repository plan; none of these runtime milestones is complete.
+## Implemented and verified offline
 
-## 1. Resolve and prove the integration
+- A Python package, installed `bridge` command, versioned SQLite schema, and locked runtime/development dependencies.
+- Private single-owner, single-channel Discord mention ingress; durable admission acknowledgments, rate/capacity limits, text-only input, and bounded history catch-up with watermark coordination.
+- Persistent per-conversation FIFO work, lease expiry, request capabilities, explicit no-reply completion, completed-exchange context, and refusal to automatically reexecute claimed/uncertain work.
+- HTTPS wake requests to the configured provider with redirects disabled. Wake success, helper completion, and Discord delivery are separate transitions. Fast replies cannot be overwritten by late wake responses.
+- Authenticated loopback API, separate helper/admin credentials, strict reply fields, stored destinations, body limits, redacted errors, and local terminal claim/reply helpers.
+- Durable per-chunk outbox with deterministic nonces, restart recovery, finite ambiguous-send retries, recorded permanent failures, and explicit operator retry/skip controls.
+- Private atomic configuration, service locking, logical retention, helper capability storage/compaction, and mock operation without credentials.
+- 92 tests cover authorization, duplicate events/replies, conflicting responses, expiry, queue order, separate conversations, restart states, database failure rollback, response validation, body limits, redirects, partial sends, ambiguous sends, mention suppression, catch-up, and a mock HTTP/helper/Discord round-trip.
 
-Confirm Grok Bot routines vs xAI API, private vs shared use, host topology, webhook body availability, and required conversation-history behavior. Prove a text request and final reply using a fake Discord transport first, then a real Grok routine. Record the actual webhook authorization and response behavior; do not infer completion from HTTP 200.
+## Docker deployment
 
-## 2. Durable message core
+Implemented a digest-pinned multi-stage image, hardened Compose runtime, isolated setup wizard, authenticated container healthcheck, and standard-library host helper. A real Docker smoke test verifies non-root/readonly settings, unauthenticated rejection, host-helper round-trip, idempotent final submission, healthcheck execution, and persistence after container recreation. Tests use only disposable volumes and fake external transports. Production setup requires Engine 28+; the mock smoke test also runs on older engines because it contains no live credentials or external actions.
 
-Create versioned SQLite migrations, inbox/request/outbox tables, unique event and response keys, transactional transitions, per-conversation FIFO claims, leases, attempt fencing, expiry, and bounded queues. Record reply chunks independently. Add a single-instance service lock or fully specify multi-worker database ownership.
+## Delivered but not exercised on the target host
 
-Required tests: duplicate event replay; restart with queued and active work; two concurrent claims; earlier retry blocks later same-conversation work; unrelated conversations progress; expiry releases capacity; stale generation rejected; callback arriving before webhook response; database write failure never produces an acceptance acknowledgment.
+- Interactive setup with hidden credential input and generated helper credentials.
+- Inspected-checkout Linux installer, separate service account, and hardened systemd unit. Installer shell syntax is checked; privileged installation is not run on the developer machine.
+- Pinned-action CI passed on Linux with Python 3.12 and 3.13, including tests, formatting, the installed mock command, and installer shell syntax.
 
-## 3. Security and transport
+Additional verification (initial native implementation): the built wheel was installed into a separate Python 3.13 environment and its mock command passed; local Ruff checks and installer shell syntax passed. A pip-audit check of the locked runtime requirements reported no known vulnerabilities in the local environment.
 
-Add fail-closed configuration, authenticated loopback helper/API, scoped reply validation, constrained HTTPS wake requests without redirects, input/output limits, and Discord mention suppression. Keep the Discord credential in the bridge service boundary.
+## Required live verification
 
-Required tests: wrong/missing credentials; unknown event; changed destination fields rejected; wrong bot credential; expired capability; duplicate final response produces one outbox result; conflicting final response returns conflict; redirect cannot forward wake credentials; unauthorized guild/channel/author never reaches storage or Grok; body and queue limits; credentials absent from log output.
+On Grok's computer, choose Docker or the optional native Linux/systemd installer and establish the unprivileged routine identity. Install using the wizard, create/configure the supplied routine, send a Discord mention, and observe the final answer. Confirm one duplicate submission does not add a second reply and that the service recovers after restart. Validate actual webhook key handling and routine execution behavior.
 
-## 4. Discord and Grok adapters
+`bridge doctor` checks transport readiness, catch-up, and worker liveness. It does not certify the Grok routine. The live round-trip is required before declaring the adapter compatible or the deployment ready.
 
-Implement mention-only Gateway receive, persist-before-ack, original-message references, bounded ordered catch-up, Grok wake/completion lifecycle, explicit no-reply, and persistent chunk delivery. Retry only when the outcome is known or can be reconciled safely. Keep one agent task active per conversation.
+## Explicitly outside v1
 
-Required tests: HTTP 200 without callback expires visibly; transient failure recovery; permanent authentication failure; Discord rate limiting; partial chunk failure; crash after remote acceptance before database commit; duplicate reply submission; process restart; source message deletion; watermark/catch-up interleaving. Use a fake server for deterministic failure injection; run one real Discord/Grok smoke test after configuration.
-
-## 5. Setup and operations
-
-Implement setup wizard, secret generation, config validation, mock mode, topology checks, round-trip doctor, status/recovery commands, retention, service management, and locked release packaging. Choose the primary installation form once the actual host is known. Avoid an installer that executes a mutable remote script without an inspectable pinned release.
-
-A new user should configure one Discord application and one Grok routine, answer one wizard, and start one service. Success requires an observed final reply, working allowlist rejection, and restart recovery. No credential entry through Discord or chat.
-
-## Release gate
-
-Deliver a runnable text bridge only after all security, recovery, and lifecycle tests above pass and the selected Grok runtime is verified. Publish the exact delivery limitations in the README. Broaden to multiple bots, threads, shared servers, attachments, or streaming only after their authorization and context contracts are defined.
+Remote callbacks, multiple bots/owners/channels, threads, attachments, streaming responses, shared native-Grok history, Windows, and native macOS service installation. Exactly-once external agent tool execution requires a verified agent ledger; history recovery cannot recover deleted or inaccessible messages.

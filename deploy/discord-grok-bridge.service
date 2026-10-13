@@ -1,0 +1,30 @@
+[Unit]
+Description=Private Discord Grok bridge
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=discord-grok-bridge
+Group=discord-grok-bridge
+ExecStart=/opt/discord-grok-bridge/.venv/bin/bridge run --config /var/lib/discord-grok-bridge/service.json
+Restart=on-failure
+RestartSec=5
+StateDirectory=discord-grok-bridge
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/discord-grok-bridge
+
+[Install]
+WantedBy=multi-user.target

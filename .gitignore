@@ -12,3 +12,9 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .DS_Store
+work/
+*.egg-info/
+dist/
+
+build/
+.docker-agent/

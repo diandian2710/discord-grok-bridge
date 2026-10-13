@@ -1,0 +1,6 @@
+include uv.lock SECURITY.md AGENTS.md Dockerfile compose.yaml .dockerignore
+recursive-include docs *.md
+recursive-include prompts *.md
+recursive-include deploy *.sh *.service *.py
+include deploy/bridge
+recursive-include tests *.py
