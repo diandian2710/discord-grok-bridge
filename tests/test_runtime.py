@@ -1,3 +1,4 @@
+import dataclasses
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -59,13 +60,25 @@ async def test_unauthorized_input_never_reaches_inbox(bridge, store, change):
     assert store.db.execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == 0
 
 
-async def test_persist_before_ack_and_no_inbound_token_dependency(bridge, store):
+async def test_persist_without_ack_by_default(bridge, store):
     incoming = message()
     await bridge.receive(incoming)
     assert not incoming.reply.called
     assert store.db.execute("SELECT text FROM jobs").fetchone()[0] == " hello"
-    ack = store.prepare_send()
-    assert ack["text"] == "Queued."
+    assert store.prepare_send() is None
+
+
+async def test_persist_before_optional_ack(store, settings):
+    client = Bridge(dataclasses.replace(settings, ack_message=True), store)
+    client._connection.user = SimpleNamespace(id=98765)
+    try:
+        incoming = message()
+        await client.receive(incoming)
+        assert not incoming.reply.called
+        ack = store.prepare_send()
+        assert ack["text"] == "Queued."
+    finally:
+        await client.close()
 
 
 async def test_attachments_rejected_with_notice(bridge, store):
@@ -101,7 +114,7 @@ async def test_delivery_destination_nonce_mentions_and_deleted_reference(bridge,
 
 
 async def test_revoked_destination_never_sent(bridge, store):
-    store.add("123456", "12345", "wrong-channel", "34567", "hi")
+    store.add("123456", "12345", "wrong-channel", "34567", "hi", ack=True)
     chunk = store.prepare_send()
     bridge.http.request = AsyncMock()
     await bridge.deliver(chunk)

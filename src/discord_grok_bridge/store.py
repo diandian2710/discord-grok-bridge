@@ -98,6 +98,7 @@ class Store:
         timeout=900,
         limit=100,
         rate=10,
+        ack=False,
     ):
         if not isinstance(text, str) or not text.strip() or len(text) > MAX_INPUT:
             raise Rejected("text must contain 1..4000 characters", 422)
@@ -125,7 +126,9 @@ class Store:
                 VALUES (?,?,?,?,?,?,?,?)""",
                 (event, message, guild, channel, author, text, now, now + timeout),
             )
-            self._chunk(event, 0, "Queued.")
+            if ack:
+                # Optional interim notice; durability does not depend on it.
+                self._chunk(event, 0, "Queued.")
             self.advance(message)
             return event, True
 

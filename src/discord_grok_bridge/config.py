@@ -91,6 +91,8 @@ class Settings:
     queue_limit: int = 100
     rate_per_minute: int = 10
     retention_days: int = 7
+    # Post an interim "Queued." reply before Grok answers. Off: only the final answer is posted.
+    ack_message: bool = False
 
     def validate(self) -> Settings:
         if not all(valid_id(x) for x in (self.guild_id, self.channel_id, self.author_id)):
@@ -113,6 +115,8 @@ class Settings:
         ):
             if type(field) is not int or not low <= field <= high:
                 raise ConfigError("numeric configuration out of range")
+        if type(self.ack_message) is not bool:
+            raise ConfigError("ack_message must be true or false")
         return self
 
     @classmethod
