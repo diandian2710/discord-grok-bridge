@@ -273,3 +273,52 @@ async def test_bounded_catchup_leaves_service_paused_until_continued(bridge, sto
     await bridge.on_ready()
     assert bridge.ready_for_work
     assert store.watermark() == "123458"
+
+
+@pytest.mark.parametrize(
+    ("change", "reason"),
+    [
+        ({"guild": "45678"}, "wrong_guild"),
+        ({"channel": "45678"}, "wrong_channel"),
+        ({"bot": True}, "bot"),
+        ({"author": "45678"}, "not_author"),
+        ({"mentioned": False}, "no_mention"),
+        ({"attachments": True}, "attachment"),
+    ],
+)
+async def test_debug_logs_ignore_reason_without_text(bridge, change, reason, caplog):
+    bridge.debug = True
+    with caplog.at_level("INFO", logger="bridge"):
+        await bridge.receive(message(content="<@98765> secret words", **change))
+    assert f"ignored message=123456 reason={reason}" in caplog.text
+    assert "secret words" not in caplog.text
+
+
+async def test_ignored_messages_not_logged_without_debug(bridge, caplog, monkeypatch):
+    monkeypatch.delenv("BRIDGE_DEBUG", raising=False)
+    assert Bridge(bridge.settings, bridge.store).debug is False
+    with caplog.at_level("INFO", logger="bridge"):
+        await bridge.receive(message(mentioned=False))
+    assert "ignored" not in caplog.text
+
+
+async def test_debug_enabled_by_env_or_config(store, settings, monkeypatch):
+    monkeypatch.setenv("BRIDGE_DEBUG", "1")
+    client = Bridge(settings, store)
+    assert client.debug is True
+    await client.close()
+    monkeypatch.delenv("BRIDGE_DEBUG")
+    client = Bridge(dataclasses.replace(settings, debug=True), store)
+    assert client.debug is True
+    await client.close()
+
+
+async def test_gateway_disconnect_and_resume_are_logged(bridge, caplog, monkeypatch):
+    bridge.ready_for_work = True
+    monkeypatch.setattr(bridge, "on_ready", AsyncMock())
+    with caplog.at_level("INFO", logger="bridge"):
+        await bridge.on_disconnect()
+        await bridge.on_resumed()
+    assert "gateway_disconnected" in caplog.text and "gateway_resumed" in caplog.text
+    assert bridge.ready_for_work is False
+    bridge.on_ready.assert_awaited_once()

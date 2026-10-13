@@ -93,6 +93,8 @@ class Settings:
     retention_days: int = 7
     # Post an interim "Queued." reply before Grok answers. Off: only the final answer is posted.
     ack_message: bool = False
+    # Log one line (ID and reason, never text) per ignored message. Also BRIDGE_DEBUG=1.
+    debug: bool = False
 
     def validate(self) -> Settings:
         if not all(valid_id(x) for x in (self.guild_id, self.channel_id, self.author_id)):
@@ -117,6 +119,8 @@ class Settings:
                 raise ConfigError("numeric configuration out of range")
         if type(self.ack_message) is not bool:
             raise ConfigError("ack_message must be true or false")
+        if type(self.debug) is not bool:
+            raise ConfigError("debug must be true or false")
         return self
 
     @classmethod

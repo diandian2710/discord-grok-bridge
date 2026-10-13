@@ -99,3 +99,9 @@ def test_ack_message_defaults_off_and_must_be_bool(settings):
     assert settings.validate().ack_message is False
     with pytest.raises(ConfigError, match="ack_message"):
         replace(settings, ack_message="yes").validate()
+
+
+def test_debug_defaults_off_and_must_be_bool(settings):
+    assert settings.validate().debug is False
+    with pytest.raises(ConfigError, match="debug"):
+        replace(settings, debug="1").validate()
