@@ -103,7 +103,7 @@ ls -l work/bridge-local/   # service.json and agent.json must be -rw-------
 
 The "Password input may be echoed" warnings are harmless: input comes from a pipe and is not shown. Setup never overwrites existing configuration. To redo it, delete `work/bridge-local/service.json` and `agent.json` first, but only with the user's OK.
 
-Optional: to post an interim "Queued." message before each answer, add `"ack_message": true` to `service.json`. It defaults to off, so only the real answer is posted.
+Optional: set `"debug": true` (or run with `BRIDGE_DEBUG=1`) to log why messages are ignored. Optional: to post an interim "Queued." message before each answer, add `"ack_message": true` to `service.json`. It defaults to off, so only the real answer is posted.
 
 ## Step 7: keep it running
 
@@ -126,6 +126,12 @@ sleep 15; tail -5 work/bridge-local/bridge.log    # expect: INFO gateway_ready c
 # expect {"discord_ready": true, "worker_alive": true, "catchup_ok": true}
 ```
 
+You can also check the HTTP health endpoint without revealing the helper token:
+
+```bash
+python3 -c 'import json;print("Authorization: Bearer "+json.load(open("work/bridge-local/agent.json"))["token"])' | curl -s -H @- http://127.0.0.1:18792/v1/health
+```
+
 Then ask the user to send `@TheirBot hello` in the channel. Confirm that the log shows `accepted` and `wake ... result=accepted`, that the routine runs, and that the answer appears in Discord. Only call the setup finished after this real round trip works.
 
 ## Troubleshooting
@@ -134,7 +140,8 @@ Then ask the user to send `@TheirBot hello` in the channel. Confirm that the log
 | --- | --- |
 | Log repeats `operation failed`, or `401 Unauthorized` / `Improper token` | Bad Discord token (often the Client Secret by mistake). Get a fresh bot token, delete the two config files, and rerun Step 6. |
 | `catchup_failed` / doctor shows `catchup_ok: false` | Wrong channel or server ID, or the bot lacks the three permissions in that channel. Fix, then restart the loop. |
-| Bot ignores messages | The message must @mention the bot, come from the configured user, and be in the configured channel. Attachments are rejected. |
+| Bot ignores messages | The message must @mention the bot, come from the configured user, and be in the configured channel. Attachments are rejected. Restart with `BRIDGE_DEBUG=1` (or `"debug": true` in `service.json`) and the log shows `ignored message=<id> reason=<wrong_guild|wrong_channel|bot|not_author|no_mention|attachment|rejected_NNN|not_ready_recovered_on_catchup>`, never message text. |
+| Replies arrive minutes late | Look for `gateway_disconnected` / `gateway_resumed` in the log. Messages sent while disconnected are recovered by catch-up after reconnecting. |
 | `wake ... result=rejected` | Wrong webhook URL or key, or the routine is disabled. |
 | Queue stuck or a request "uncertain" | Run `.venv/bin/bridge status --config work/bridge-local/service.json`. Check Grok/Discord, then `bridge recover --config work/bridge-local/service.json --event <id> --action retry-wake --accept-duplicate-risk` (or `retry-send`, or `skip`). Unresolved requests expire after 15 minutes. |
 | Nothing after a reboot | The loop doesn't start on its own. Start it again (Step 7), or add it to whatever startup mechanism the machine has. |

@@ -74,13 +74,26 @@ What to look for in the log:
 - `gateway_ready catchup_complete`: connected. It reappears after every reconnect, and messages sent while disconnected are picked up then.
 - `accepted event=…`: your message was taken.
 - `wake event=… result=accepted`: Grok was pinged.
-- If you sent a message and see no `accepted`, the bridge ignored it. Messages are ignored silently when they are in a different channel, from another user or a bot, or don't directly @mention the bot (role mentions and plain replies don't count).
+- `gateway_disconnected` / `gateway_resumed`: Discord connection dropped and came back. Messages sent in between are picked up by the catch-up that follows, so a short delay is normal.
+- If you sent a message and see no `accepted`, the bridge ignored it. By default, ignored messages are not logged. Turn on **debug mode** to see why.
+
+**Debug mode:** start the bridge with `BRIDGE_DEBUG=1` in its environment, or set `"debug": true` in `service.json`, then restart. With `deploy/run-loop.sh`, run `BRIDGE_DEBUG=1 setsid nohup deploy/run-loop.sh >/dev/null 2>&1 </dev/null &`. Each ignored message then logs one line with its ID and a reason, never its text:
+
+| Reason | Meaning |
+| --- | --- |
+| `wrong_guild` / `wrong_channel` | Sent somewhere other than the configured server or channel |
+| `bot` | Sent by a bot |
+| `not_author` | Sent by someone other than the configured user (check your user ID) |
+| `no_mention` | Didn't directly @mention the bot (role mentions and plain replies don't count) |
+| `attachment` | Had an attachment (you also get a notice in Discord) |
+| `rejected_429` / `rejected_422` | Rate limit or full queue / empty or too-long text |
+| `not_ready_recovered_on_catchup` | Arrived while disconnected; it is picked up after reconnecting |
 
 | Problem | Fix |
 | --- | --- |
 | Log loops `operation failed` / `401 Unauthorized` | Wrong Discord token. Use the **Bot → Reset Token** value, which has two dots; it is not the Client Secret. Delete `service.json` and `agent.json`, then rerun setup. |
 | `catchup_failed`, or doctor shows `catchup_ok: false` | Wrong server/channel ID, or the bot lacks View Channels / Send Messages / Read Message History there. Fix it and restart. |
-| No `accepted` after a mention | See "What to look for in the log" above. Check the channel and user IDs; they are different numbers. |
+| No `accepted` after a mention | Turn on debug mode and read the `reason=`. Check the channel and user IDs; they are different numbers. |
 | `wake … result=rejected` | Wrong webhook URL or key, or the routine is disabled. |
 | A request stuck as `uncertain` or blocking the queue | Check what happened in Grok and Discord first. Then run `bridge recover --config work/bridge-local/service.json --event <id> --action retry-wake --accept-duplicate-risk` (or `retry-send`, or `skip`). Stuck requests expire after 15 minutes. |
 | Nothing after a reboot | Start the loop again: `setsid nohup deploy/run-loop.sh >/dev/null 2>&1 </dev/null &` |

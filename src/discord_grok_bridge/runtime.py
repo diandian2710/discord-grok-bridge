@@ -80,6 +80,12 @@ class Bridge(discord.Client):
         self.worker_task = None
         self.session = None
         self.runner = None
+        self.debug = settings.debug or os.environ.get("BRIDGE_DEBUG") == "1"
+
+    def ignored(self, message, reason: str):
+        # Never log message content; IDs and a fixed reason only.
+        if self.debug:
+            log.info("ignored message=%s reason=%s", getattr(message, "id", "?"), reason)
 
     def health(self):
         return worker_health(
@@ -106,9 +112,12 @@ class Bridge(discord.Client):
         await super().close()
 
     async def on_disconnect(self):
+        if self.ready_for_work:
+            log.info("gateway_disconnected")
         self.ready_for_work = False
 
     async def on_resumed(self):
+        log.info("gateway_resumed")
         await self.on_ready()
 
     async def on_ready(self):
@@ -162,19 +171,27 @@ class Bridge(discord.Client):
         async with self.receive_lock:
             if self.ready_for_work:
                 await self.receive(message)
+            else:
+                self.ignored(message, "not_ready_recovered_on_catchup")
 
     async def receive(self, message: discord.Message):
         cfg = self.settings
         if not message.guild or str(message.guild.id) != cfg.guild_id:
+            self.ignored(message, "wrong_guild")
             return
         if str(message.channel.id) != cfg.channel_id:
+            self.ignored(message, "wrong_channel")
             return
-        if (
-            message.author.bot
-            or str(message.author.id) != cfg.author_id
-            or not self.user
-            or self.user.id not in {u.id for u in message.mentions}
-        ):
+        if message.author.bot:
+            reason = "bot"
+        elif str(message.author.id) != cfg.author_id:
+            reason = "not_author"
+        elif not self.user or self.user.id not in {u.id for u in message.mentions}:
+            reason = "no_mention"
+        else:
+            reason = None
+        if reason:
+            self.ignored(message, reason)
             self.store.advance(str(message.id))
             return
         text = re.sub(rf"<@!?{self.user.id}>", "", message.content, count=1)
@@ -200,6 +217,7 @@ class Bridge(discord.Client):
                 log.info("accepted event=%s", event)
         except Rejected as exc:
             # Rejected work is never acknowledged as accepted or forwarded to Grok.
+            self.ignored(message, "attachment" if rejection else f"rejected_{exc.status}")
             self.store.advance(str(message.id))
             try:
                 await message.reply(

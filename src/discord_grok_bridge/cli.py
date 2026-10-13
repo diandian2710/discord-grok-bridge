@@ -236,8 +236,8 @@ def main():
     os.umask(0o077)
     args = parser().parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    # Avoid library tracebacks that may contain remote URLs or request bodies.
-    logging.getLogger("discord").setLevel(logging.CRITICAL)
+    # Warnings surface gateway/rate-limit problems; discord.py never logs the token.
+    logging.getLogger("discord").setLevel(logging.WARNING)
     try:
         if args.command == "setup":
             setup(args)
