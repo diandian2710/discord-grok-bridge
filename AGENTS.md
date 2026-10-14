@@ -37,7 +37,7 @@ uv run --frozen --no-editable pytest -q
 uv run --frozen --no-editable bridge mock --state-dir work/mock-bridge
 ```
 
-The mock should print `{"ok": true, ...}`. If the repo is private, the user must give you read access first (for example by running `gh auth login` on this machine themselves).
+The mock should print `{"ok": true, ...}`. The repository is public; cloning does not require GitHub authentication.
 
 ## Step 3: Discord setup (ask one question at a time)
 
