@@ -63,8 +63,23 @@ setsid nohup deploy/run-loop.sh >/dev/null 2>&1 </dev/null &   # auto-restart lo
 ```
 
 You'll need:
-- **Discord:** a bot with **no privileged intents**, invited with only **View Channels**, **Send Messages** and **Read Message History**; plus your server, channel and user IDs (turn on Developer Mode to copy them).
+
+- **Discord:** an application configured using [Discord App](#discord-app) below, invited with only **View Channels**, **Send Messages** and **Read Message History**; plus your server, channel and user IDs. No privileged intents are required for this bridge's direct-mention mode.
 - **Grok:** a **webhook-triggered routine** on the same machine (URL `https://api2.cursor.sh/automations/webhook/<id>` and a key), using the instructions in [`prompts/grok-routine.md`](prompts/grok-routine.md).
+
+## Discord App
+
+One-time setup at [discord.com/developers/applications](https://discord.com/developers/applications).
+
+1. **New Application**. Name it what people will @mention.
+2. **Bot** → **Reset Token**. That is your `DISCORD_BOT_TOKEN`. Never commit it or paste it into chat; enter it only through the setup wizard's hidden prompt or your platform's secure input.
+3. **Bot** → **Privileged Gateway Intents**: if you need general message content access, turn **Message Content Intent** **on** and save. For this bridge's direct-mention mode, you can leave it **off**. Leave the other privileged intents off.
+4. **OAuth2** → **URL Generator**: select the `bot` scope. Permissions: **View Channels**, **Send Messages**, **Read Message History**.
+5. Open the generated URL, pick your server, and authorize the bot. Make sure it can see your chosen private text channel.
+6. In Discord, go to **User Settings** → **Advanced** → **Developer Mode**. Right-click the server, your chosen channel, and your own user profile to copy their IDs. This bridge requires all three IDs for its allowlist.
+
+> [!NOTE]
+> Without **Message Content Intent**, REST can still return messages with an empty `content` field. Discord makes exceptions, including messages that directly @mention the app, DMs with the app, and messages the app sends itself. This bridge processes direct mentions in its configured channel, so the intent is optional. See [Discord's Message Content Intent documentation](https://docs.discord.com/developers/events/gateway#message-content-intent).
 
 ## Integration
 
@@ -124,6 +139,10 @@ Details: [`SECURITY.md`](SECURITY.md).
 
 - **Docker** (Engine 28+): `./deploy/docker-setup.sh <grok-user>` then `docker compose up -d bridge`. Credentials live in a Docker volume, and the API is published only on `127.0.0.1:18792`. Grok must not have Docker access.
 - **Native systemd** (Linux + sudo): `sudo ./deploy/install.sh <grok-user>`. The bridge runs under a dedicated service account, and Grok runs as a separate unprivileged user. Manage it with `systemctl` / `journalctl -u discord-grok-bridge`.
+
+## Inspiration
+
+This repository was inspired by [lawrencewzen/wx-bot](https://github.com/lawrencewzen/wx-bot) and [stevederico/discord-grok-bot-oss](https://github.com/stevederico/discord-grok-bot-oss).
 
 ## Development
 
