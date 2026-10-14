@@ -140,6 +140,10 @@ Details: [`SECURITY.md`](SECURITY.md).
 - **Docker** (Engine 28+): `./deploy/docker-setup.sh <grok-user>` then `docker compose up -d bridge`. Credentials live in a Docker volume, and the API is published only on `127.0.0.1:18792`. Grok must not have Docker access.
 - **Native systemd** (Linux + sudo): `sudo ./deploy/install.sh <grok-user>`. The bridge runs under a dedicated service account, and Grok runs as a separate unprivileged user. Manage it with `systemctl` / `journalctl -u discord-grok-bridge`.
 
+## License
+
+This project is open source under the [MIT License](LICENSE).
+
 ## Inspiration
 
 This repository was inspired by [lawrencewzen/wx-bot](https://github.com/lawrencewzen/wx-bot) and [stevederico/discord-grok-bot-oss](https://github.com/stevederico/discord-grok-bot-oss).
