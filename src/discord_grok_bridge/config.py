@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import os
@@ -95,10 +96,22 @@ class Settings:
     ack_message: bool = False
     # Log one line (ID and reason, never text) per ignored message. Also BRIDGE_DEBUG=1.
     debug: bool = False
+    # Extra Discord user IDs allowed to use the bridge, in addition to author_id (the owner).
+    authorized_user_ids: list[str] = dataclasses.field(default_factory=list)
+
+    @property
+    def allowed_authors(self) -> frozenset[str]:
+        return frozenset([self.author_id, *self.authorized_user_ids])
 
     def validate(self) -> Settings:
         if not all(valid_id(x) for x in (self.guild_id, self.channel_id, self.author_id)):
             raise ConfigError("guild, channel, and owner IDs must be Discord snowflakes")
+        if (
+            not isinstance(self.authorized_user_ids, list)
+            or len(self.authorized_user_ids) > 25
+            or not all(valid_id(x) for x in self.authorized_user_ids)
+        ):
+            raise ConfigError("authorized_user_ids must be a list of up to 25 Discord user IDs")
         webhook_url(self.webhook_url)
         for field in (self.discord_token, self.webhook_key):
             if not isinstance(field, str) or not field or any(c.isspace() for c in field):

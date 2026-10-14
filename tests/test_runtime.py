@@ -322,3 +322,38 @@ async def test_gateway_disconnect_and_resume_are_logged(bridge, caplog, monkeypa
     assert "gateway_disconnected" in caplog.text and "gateway_resumed" in caplog.text
     assert bridge.ready_for_work is False
     bridge.on_ready.assert_awaited_once()
+
+
+async def test_additional_authorized_user_is_accepted_under_own_identity(store, settings):
+    client = Bridge(dataclasses.replace(settings, authorized_user_ids=["45678"]), store)
+    client._connection.user = SimpleNamespace(id=98765)
+    try:
+        await client.receive(message(author="45678"))
+        await client.receive(message(author="56789", message_id="123457"))
+        rows = store.db.execute("SELECT author FROM jobs").fetchall()
+        assert [r[0] for r in rows] == ["45678"]
+        job = store.claim()
+        assert job["author_id"] == "45678"
+    finally:
+        await client.close()
+
+
+async def test_delivery_rechecks_current_authorized_users(store, settings):
+    store.add("123456", "12345", "23456", "45678", "hi", ack=True)
+    allowed = Bridge(dataclasses.replace(settings, authorized_user_ids=["45678"]), store)
+    allowed.http.request = AsyncMock(return_value={"id": "88888"})
+    try:
+        await allowed.deliver(store.prepare_send())
+        allowed.http.request.assert_awaited_once()
+    finally:
+        await allowed.close()
+    store.add("123457", "12345", "23456", "45678", "again", ack=True)
+    removed = Bridge(settings, store)
+    removed.http.request = AsyncMock()
+    try:
+        chunk = store.prepare_send()
+        await removed.deliver(chunk)
+        removed.http.request.assert_not_called()
+        assert store.job(chunk["event"])["state"] == "failed"
+    finally:
+        await removed.close()

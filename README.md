@@ -28,7 +28,7 @@
 
 - **No lost messages**: each request is saved to a local SQLite inbox before anything else happens. Messages missed while disconnected are recovered on reconnect, and duplicate replies are ignored.
 - **Outbound only**: no public port or callback URL. The local API listens on `127.0.0.1` only.
-- **Allowlisted by default**: one server, one channel, one user. Everyone and everything else is ignored.
+- **Allowlisted by default**: one server, one channel, one owner (optionally more authorized users). Everyone and everything else is ignored.
 - **Grok never sees the Discord token**: it only gets a scoped helper credential for `claim` / `reply`.
 - Text in and out, with long answers split automatically. No privileged Discord intents needed.
 
@@ -96,6 +96,7 @@ bridge reply --agent-config work/bridge-local/agent.json --job '<handle>' --no-r
 - Input is text only, up to 4,000 characters. Replies can be up to 20,000 characters and are split into Discord-sized messages. Mentions and link previews are disabled.
 - Requests run one at a time. Limits are 10 per minute and 100 queued, and a request expires with a notice after 15 minutes.
 - **Usage:** in the channel, write `@YourBot your request`. It must be a direct user mention, not a role. Edits don't rerun a request; send a new one.
+- **More users:** add their IDs to `"authorized_user_ids": ["<id>", …]` in `service.json` (up to 25), then restart. Each user gets their own history and conversation, but **their requests run with your assistant and its tool access**. Only add people you trust that far.
 - Optional settings in `service.json`: `"ack_message": true` posts "Queued." first (off by default), and `"debug": true` logs why messages are ignored.
 
 Design and delivery guarantees: [`docs/architecture.md`](docs/architecture.md).

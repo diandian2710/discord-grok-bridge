@@ -184,7 +184,7 @@ class Bridge(discord.Client):
             return
         if message.author.bot:
             reason = "bot"
-        elif str(message.author.id) != cfg.author_id:
+        elif str(message.author.id) not in cfg.allowed_authors:
             reason = "not_author"
         elif not self.user or self.user.id not in {u.id for u in message.mentions}:
             reason = "no_mention"
@@ -206,7 +206,7 @@ class Bridge(discord.Client):
                 str(message.id),
                 cfg.guild_id,
                 cfg.channel_id,
-                cfg.author_id,
+                str(message.author.id),
                 text,
                 timeout=cfg.timeout_seconds,
                 limit=cfg.queue_limit,
@@ -240,7 +240,7 @@ class Bridge(discord.Client):
         if (
             chunk["guild"] != cfg.guild_id
             or chunk["channel"] != cfg.channel_id
-            or chunk["author"] != cfg.author_id
+            or chunk["author"] not in cfg.allowed_authors
         ):
             self.store.send_error(chunk["id"], permanent=True)
             return
@@ -301,7 +301,7 @@ async def run(settings: Settings, directory: Path, *, container=False):
     store = Store(directory / "inbox.db", settings.capability_secret)
     try:
         store.recover_restart()
-        store.revoke_unallowed(settings.guild_id, settings.channel_id, settings.author_id)
+        store.revoke_unallowed(settings.guild_id, settings.channel_id, settings.allowed_authors)
         async with Bridge(
             settings, store, api_bind="0.0.0.0" if container else "127.0.0.1"
         ) as client:

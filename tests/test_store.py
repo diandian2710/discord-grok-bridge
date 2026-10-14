@@ -292,3 +292,30 @@ def test_without_ack_expiry_notice_is_still_posted(store, clock):
     assert "expired" in chunk["text"]
     store.sent(chunk["id"], "111")
     assert store.job(event)["state"] == "delivered"
+
+
+def test_revoke_keeps_all_authorized_users_and_drops_others(store):
+    keep = store.add("1234561", "12345", "23456", "34567", "owner")[0]
+    other = store.add("1234562", "12345", "23456", "45678", "friend")[0]
+    gone = store.add("1234563", "12345", "23456", "56789", "removed")[0]
+    store.revoke_unallowed("12345", "23456", {"34567", "45678"})
+    assert store.job(keep)["state"] == "queued"
+    assert store.job(other)["state"] == "queued"
+    assert store.job(gone)["error"] == "policy_changed"
+    with pytest.raises(ValueError):
+        store.revoke_unallowed("12345", "23456", set())
+
+
+def test_history_and_conversation_are_per_user(store):
+    add(store)
+    submit(store, store.claim(), "owner private answer")
+    finish(store)
+    store.add("123457", "12345", "23456", "45678", "friend request")
+    friend = store.claim()
+    assert friend["history"] == [] and friend["author_id"] == "45678"
+    submit(store, friend, "friend answer")
+    finish(store)
+    store.add("123458", "12345", "23456", "34567", "owner again")
+    owner = store.claim()
+    assert [h["assistant"] for h in owner["history"]] == ["owner private answer"]
+    assert owner["conversation_id"] != friend["conversation_id"]
