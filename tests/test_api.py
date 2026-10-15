@@ -149,3 +149,9 @@ async def test_stdlib_helper_reads_bounded_large_unicode_history(client, store):
     job = (await helper.request(client.server.port, "a" * 40, "POST", "/v1/claim", {}))["job"]
     assert len(job["history"]) == 6
     assert job["history"][0]["assistant"] == "🦉" * 20000
+
+
+async def test_claim_includes_author_and_owner_role(client, store):
+    add(store)
+    job = (await (await client.post("/v1/claim", json={}, headers=auth())).json())["job"]
+    assert job["author_id"] == "34567" and job["role"] == "owner"

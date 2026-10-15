@@ -46,7 +46,7 @@ def build_app(store: Store, settings: Settings, health) -> web.Application:
                 store.revoke_unallowed(
                     settings.guild_id, settings.channel_id, settings.allowed_authors
                 )
-                return web.json_response({"job": store.claim()})
+                return web.json_response({"job": store.claim(settings.author_id)})
             if request.path == "/v1/reply":
                 required = {"event_id", "generation", "reply_capability", "text", "no_reply"}
                 if set(body) != required:

@@ -85,7 +85,7 @@ By default, ignored messages are not logged. **Turn debug on** by setting `BRIDG
 | `wrong_guild` | The message came from another server | Use the configured server, or redo setup with the right server ID |
 | `wrong_channel` | The message came from another channel | Post in the configured channel; the channel ID is not the server or user ID |
 | `bot` | The author is a bot | Only humans are accepted |
-| `not_author` | The author isn't the owner or in `authorized_user_ids` | Check the user ID (right-click the name → Copy User ID). Add extra users to `"authorized_user_ids"` in `service.json` and restart |
+| `not_author` | The author isn't the owner or in `authorized_user_ids` / `chat_only_user_ids` | Check the user ID (right-click the name → Copy User ID). Add extra users to `"authorized_user_ids"` in `service.json` and restart |
 | `no_mention` | The bot wasn't directly mentioned | Type `@` and pick the bot. Role mentions, nicknames in text and plain replies don't count |
 | `attachment` | The message had a file or image | Text only; a notice is posted in Discord |
 | `rejected_429` | Rate limit (10/min) or a full queue (100) | Wait, or clear stuck requests |
@@ -147,3 +147,7 @@ setsid nohup deploy/run-loop.sh >/dev/null 2>&1 </dev/null &
 **Check**: on startup, the log shows `WARNING PyNaCl is not installed, voice will NOT be supported` (and the same for `davey`).
 
 **Fix**: none needed. These come from the Discord library, and the bridge doesn't use voice.
+
+## A second user gets answers but should not reach my accounts
+
+Extra users (`authorized_user_ids` / `chat_only_user_ids`) are claimed with `"role": "chat_only"`; only `author_id` gets `"role": "owner"`. The bridge cannot stop the routine from using tools, so make sure your routine prompt is the current `prompts/grok-routine.md`, which tells it to answer `chat_only` jobs from general knowledge only. History is kept per user, so one user never sees the other's exchanges.

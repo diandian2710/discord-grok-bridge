@@ -319,3 +319,18 @@ def test_history_and_conversation_are_per_user(store):
     owner = store.claim()
     assert [h["assistant"] for h in owner["history"]] == ["owner private answer"]
     assert owner["conversation_id"] != friend["conversation_id"]
+
+
+def test_claim_reports_role(store):
+    store.add("123456", "12345", "23456", "34567", "owner")
+    job = store.claim("34567")
+    assert (job["author_id"], job["role"]) == ("34567", "owner")
+    store.add("123457", "12345", "23456", "45678", "friend")
+    store.add("123458", "12345", "23456", "34567", "no owner configured")
+    submit(store, job, "ok")
+    finish(store)
+    friend = store.claim("34567")
+    assert (friend["author_id"], friend["role"]) == ("45678", "chat_only")
+    submit(store, friend, "ok")
+    finish(store)
+    assert store.claim()["role"] == "chat_only"

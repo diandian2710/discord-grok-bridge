@@ -180,7 +180,8 @@ class Store:
                     (event,),
                 )
 
-    def claim(self):
+    def claim(self, owner: str | None = None):
+        # Only the configured owner gets role "owner"; anyone else (or unknown owner) is chat_only.
         self.expire()
         with self.transaction():
             for job in self.heads():
@@ -207,6 +208,7 @@ class Store:
                     "expires_at": job["expires"],
                     # Lets the routine tell the owner apart from other authorized users.
                     "author_id": job["author"],
+                    "role": "owner" if owner and job["author"] == owner else "chat_only",
                     "conversation_id": digest(f"{job['guild']}:{job['channel']}:{job['author']}")[
                         :32
                     ],

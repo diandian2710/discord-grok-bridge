@@ -83,7 +83,7 @@ One-time setup at [discord.com/developers/applications](https://discord.com/deve
 
 ## Integration
 
-**Receive**: the routine runs `bridge claim`. It returns `{"job":null}`, or a job with `event_id`, `conversation_id`, `text`, `history` (the last six exchanges) and a private `handle` path. **A wake is only a hint; always claim. Duplicate replies with the same text are safe.**
+**Receive**: the routine runs `bridge claim`. It returns `{"job":null}`, or a job with `event_id`, `conversation_id`, `author_id`, `role` (`owner` or `chat_only`), `text`, `history` (the last six exchanges) and a private `handle` path. **A wake is only a hint; always claim. Duplicate replies with the same text are safe.**
 
 **Reply**:
 
@@ -96,7 +96,7 @@ bridge reply --agent-config work/bridge-local/agent.json --job '<handle>' --no-r
 - Input is text only, up to 4,000 characters. Replies can be up to 20,000 characters and are split into Discord-sized messages. Mentions and link previews are disabled.
 - Requests run one at a time. Limits are 10 per minute and 100 queued, and a request expires with a notice after 15 minutes.
 - **Usage:** in the channel, write `@YourBot your request`. It must be a direct user mention, not a role. Edits don't rerun a request; send a new one.
-- **More users:** add their IDs to `"authorized_user_ids": ["<id>", …]` in `service.json` (up to 25), then restart. Each user gets their own history and conversation, but **their requests run with your assistant and its tool access**. Only add people you trust that far.
+- **More users:** add their IDs to `"authorized_user_ids": ["<id>", …]` (or `"chat_only_user_ids"`) in `service.json` (up to 25 each), then restart. Old configs with only `author_id` keep working. `author_id` is the only `owner`; every other user gets role `chat_only`. Each user gets their own history and conversation. The bridge labels each job with `author_id` and `role`, and the routine prompt must answer `chat_only` jobs without tools or account access; this is enforced by the routine, not the bridge, so only add people you trust.
 - Optional settings in `service.json`: `"ack_message": true` posts "Queued." first (off by default), and `"debug": true` logs why messages are ignored.
 
 Design and delivery guarantees: [`docs/architecture.md`](docs/architecture.md).
