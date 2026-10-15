@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import os
@@ -95,10 +96,36 @@ class Settings:
     ack_message: bool = False
     # Log one line (ID and reason, never text) per ignored message. Also BRIDGE_DEBUG=1.
     debug: bool = False
+    # Extra Discord user IDs allowed to use the bridge, in addition to author_id (the owner).
+    # Every extra user gets the "chat_only" role; only author_id is ever "owner".
+    authorized_user_ids: list[str] = dataclasses.field(default_factory=list)
+    # Alias: IDs listed here are also authorized as chat_only users.
+    chat_only_user_ids: list[str] = dataclasses.field(default_factory=list)
+
+    @property
+    def allowed_authors(self) -> frozenset[str]:
+        return frozenset([self.author_id, *self.authorized_user_ids, *self.chat_only_user_ids])
+
+    def role_for(self, author: str) -> str | None:
+        if author == self.author_id:
+            return "owner"
+        if author in self.allowed_authors:
+            return "chat_only"
+        return None
 
     def validate(self) -> Settings:
         if not all(valid_id(x) for x in (self.guild_id, self.channel_id, self.author_id)):
             raise ConfigError("guild, channel, and owner IDs must be Discord snowflakes")
+        for extra in (self.authorized_user_ids, self.chat_only_user_ids):
+            if (
+                not isinstance(extra, list)
+                or len(extra) > 25
+                or not all(valid_id(x) for x in extra)
+            ):
+                raise ConfigError(
+                    "authorized_user_ids and chat_only_user_ids must be lists of up to 25 "
+                    "Discord user IDs"
+                )
         webhook_url(self.webhook_url)
         for field in (self.discord_token, self.webhook_key):
             if not isinstance(field, str) or not field or any(c.isspace() for c in field):

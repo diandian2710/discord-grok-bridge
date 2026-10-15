@@ -105,3 +105,36 @@ def test_debug_defaults_off_and_must_be_bool(settings):
     assert settings.validate().debug is False
     with pytest.raises(ConfigError, match="debug"):
         replace(settings, debug="1").validate()
+
+
+def test_authorized_user_ids_default_and_validation(settings):
+    assert settings.validate().allowed_authors == {"34567"}
+    extra = replace(settings, authorized_user_ids=["45678"]).validate()
+    assert extra.allowed_authors == {"34567", "45678"}
+    for bad in ("45678", ["name"], [45678], ["45678"] * 26):
+        with pytest.raises(ConfigError, match="authorized_user_ids"):
+            replace(settings, authorized_user_ids=bad).validate()
+        with pytest.raises(ConfigError, match="chat_only_user_ids"):
+            replace(settings, chat_only_user_ids=bad).validate()
+
+
+def test_roles_owner_and_chat_only(settings):
+    cfg = replace(settings, authorized_user_ids=["45678"], chat_only_user_ids=["56789"]).validate()
+    assert cfg.allowed_authors == {"34567", "45678", "56789"}
+    assert cfg.role_for("34567") == "owner"
+    assert cfg.role_for("45678") == "chat_only"
+    assert cfg.role_for("56789") == "chat_only"
+    assert cfg.role_for("67890") is None
+
+
+def test_old_config_without_authorized_user_ids_loads(settings, tmp_path):
+    from dataclasses import asdict
+
+    from discord_grok_bridge.config import Settings
+
+    data = asdict(settings)
+    del data["authorized_user_ids"]
+    del data["chat_only_user_ids"]
+    path = tmp_path / "service.json"
+    private_json(path, data)
+    assert Settings.load(path).allowed_authors == {"34567"}

@@ -43,8 +43,10 @@ def build_app(store: Store, settings: Settings, health) -> web.Application:
             if request.path == "/v1/claim":
                 if body:
                     raise Rejected("claim body must be empty", 422)
-                store.revoke_unallowed(settings.guild_id, settings.channel_id, settings.author_id)
-                return web.json_response({"job": store.claim()})
+                store.revoke_unallowed(
+                    settings.guild_id, settings.channel_id, settings.allowed_authors
+                )
+                return web.json_response({"job": store.claim(settings.author_id)})
             if request.path == "/v1/reply":
                 required = {"event_id", "generation", "reply_capability", "text", "no_reply"}
                 if set(body) != required:

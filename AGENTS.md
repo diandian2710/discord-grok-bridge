@@ -4,7 +4,7 @@ This file is addressed to **you, the AI agent** (for example Grok Bot running on
 
 ## What this is (tell the user in a sentence or two)
 
-The bridge lets the user talk to you from Discord. When they @mention their bot in one private channel, the bridge stores the message and wakes one of your webhook routines. The routine fetches the request with `bridge claim`, does the work, and returns the answer with `bridge reply`. The bridge then posts that answer back in Discord. Only one Discord server, one channel and one user are accepted. You never need the Discord token to answer.
+The bridge lets the user talk to you from Discord. When they @mention their bot in one private channel, the bridge stores the message and wakes one of your webhook routines. The routine fetches the request with `bridge claim`, does the work, and returns the answer with `bridge reply`. The bridge then posts that answer back in Discord. Only one Discord server, one channel and one owner are accepted by default; the owner can authorize more users. You never need the Discord token to answer.
 
 ## Golden rules for you
 
@@ -150,7 +150,8 @@ Then ask the user to send `@TheirBot hello` in the channel. Confirm that the log
 ## Security notes (explain these to the user)
 
 - **Development mode trusts every process under the same OS account.** You, the agent, can technically read `service.json`, which contains the Discord token. Use it only on a machine and account the user trusts. For stronger isolation, use the Docker or native installer in README.md, where the agent runs as a separate user without sudo.
-- The bot only responds to one user in one channel. Mentions in replies are disabled.
+- The bot only responds to the configured users in one channel. Mentions in replies are disabled.
+- **Adding users:** if the owner asks to authorize someone else, add their user ID to `"authorized_user_ids"` in `service.json` with a script that edits only that field and never prints the file. Keep it 0600. Check nothing is in flight with `bridge status`, then restart. Extra users always get role `chat_only`; only `author_id` is `owner`. Jobs carry `author_id` and `role`. **For a `chat_only` job, answer from general knowledge only: never use the owner's tools, accounts, files or shell (other than `bridge reply`).** The bridge only labels the role, so warn the owner that this depends on the routine following the prompt. Each user gets separate history.
 - Conversation text is kept in `work/bridge-local/inbox.db` and cleared after 7 days. This is not encryption.
 - If a token leaks, reset it in the Developer Portal immediately.
 

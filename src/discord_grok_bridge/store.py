@@ -180,7 +180,8 @@ class Store:
                     (event,),
                 )
 
-    def claim(self):
+    def claim(self, owner: str | None = None):
+        # Only the configured owner gets role "owner"; anyone else (or unknown owner) is chat_only.
         self.expire()
         with self.transaction():
             for job in self.heads():
@@ -205,6 +206,9 @@ class Store:
                     "generation": generation,
                     "reply_capability": token,
                     "expires_at": job["expires"],
+                    # Lets the routine tell the owner apart from other authorized users.
+                    "author_id": job["author"],
+                    "role": "owner" if owner and job["author"] == owner else "chat_only",
                     "conversation_id": digest(f"{job['guild']}:{job['channel']}:{job['author']}")[
                         :32
                     ],
@@ -392,12 +396,16 @@ class Store:
             ).fetchone()[0],
         }
 
-    def revoke_unallowed(self, guild: str, channel: str, author: str):
+    def revoke_unallowed(self, guild: str, channel: str, authors):
+        authors = [authors] if isinstance(authors, str) else sorted(authors)
+        if not authors:
+            raise ValueError("at least one authorized author is required")
+        marks = ",".join("?" * len(authors))
         with self.transaction():
             rows = self.db.execute(
                 "SELECT event FROM jobs WHERE state NOT IN ('delivered','failed') "
-                "AND (guild!=? OR channel!=? OR author!=?)",
-                (guild, channel, author),
+                f"AND (guild!=? OR channel!=? OR author NOT IN ({marks}))",
+                (guild, channel, *authors),
             ).fetchall()
             for row in rows:
                 self.db.execute(
